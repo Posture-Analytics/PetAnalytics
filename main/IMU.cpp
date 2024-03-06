@@ -1,154 +1,119 @@
 #include "IMU.h"
-#include "ICM_20948.h" 
+#include "ICM_20948.h"
 
-bool isrFired[3] = {false, false, false};
+IMU::IMU(int number, int CSpin, const char* name):
+  IMUnumber(number), IMUpin(CSpin), IMUname(name) {}
 
-int intPin1 = 25;
-int intPin2 = 26;
-int intPin3 = 34;
+bool IMU::init() {
+  // Continues attempting initialization until successful
+  while (!initialized) {
+    // Initializes SPI communication
+    myICM.begin(IMUpin, SPI);
 
-// vai ser uma função auxiliar que altera o estado da variável isrFired
-// O PROBLEMA TÁ AQUI, QUANDO EU COLOQUEI O ELSE IF ROLOU, MAS NÃO COLETA OS DADOS
-void icmISR()
-{
-  Serial.println("OK");
-  // Determina qual instância de IMU disparou a interrupção
-  if (!digitalRead(intPin1)) {
-    isrFired[0] = true;
-  }
-  
-  if (!digitalRead(intPin2)) {
-    isrFired[1] = true;
-  } 
+    // Checks the status of the communication and prints it
+    Serial.print("Initializing sensor '");
+    Serial.print(IMUname);
+    Serial.print(" - ");
+    Serial.print(IMUnumber);
+    Serial.print(" (CS pin: ");
+    Serial.print(IMUpin);
+    Serial.println(")'...");
 
-  if (!digitalRead(intPin3)) {
-    isrFired[2] = true;
-  }
-}
-
-IMU_20948::IMU_20948(int numberIMU, int pinIMU, int intPinIMU, const char* nameIMU)
-{
-  IMUPin = pinIMU;
-  IMUName = nameIMU;
-  IMUIntPin = intPinIMU;
-  IMUNumber = numberIMU;
-
-  // vai configurar a interrupção no pino em que está o IMU (assim como no exemplo 3)
-  pinMode(IMUIntPin, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(IMUIntPin), icmISR, FALLING);
-
-  // construindo o loop de inicialização do IMU
-  bool initialized = false;
-  while (!initialized)
-  {
-    // inicializa a comunicação via SPI
-    myICM.begin(pinIMU, SPI);
-
-    // verifica o status da comunicação
-    Serial.print("Initialization of the sensor '");
-    Serial.print(IMUName);
-    Serial.print("' returned: ");
-    Serial.println(myICM.statusString());
-
-    // verifica se houve algum erro para então tentar novamente
-    if (myICM.status != ICM_20948_Stat_Ok)
-    {
-      Serial.println("Trying again...");
+    // If there's an error, retry after a brief pause
+    if (myICM.status != ICM_20948_Stat_Ok) {
+      Serial.println("Retry initialization...");
       delay(500);
-    }
-    else
-    {
-      Serial.println("Device connected!");
+    } else {
+      Serial.println("Sensor connected successfully.");
       initialized = true;
     }
 
-    bool success = true;
+    // Initialize the Digital Motion Processor (DMP) and check the result
+    bool success = (myICM.initializeDMP() == ICM_20948_Stat_Ok);
 
-    // vai inicializar o DMP e retornar o status/resultado
-    success &= (myICM.initializeDMP() == ICM_20948_Stat_Ok);
-
-    // ativando os sensores
-    activate_sensors(&success);
-
-    // ajustando a taxa do ODR para o IMU
+    // Sensor activation, ODR adjustment, FIFO, and DMP configurations
+    activateSensors(&success);
     setOdrRate(&success);
-
-    // habilitando o FIFO 
     success &= (myICM.enableFIFO() == ICM_20948_Stat_Ok);
-
-    // habilitando o DMP
     success &= (myICM.enableDMP() == ICM_20948_Stat_Ok);
-
-    // resetando o DMP
     success &= (myICM.resetDMP() == ICM_20948_Stat_Ok);
-
-    // resetando a FIFO
     success &= (myICM.resetFIFO() == ICM_20948_Stat_Ok);
 
-    // Verifica o sucesso das configurações acima
-    if (success)
-    {
-      Serial.println("DMP enabled!");}
-    else
-    {
-      Serial.println("Enable DMP failed!");
-      Serial.println("Please check that you have uncommented line 29 (#define ICM_20948_USE_DMP) in ICM_20948_C.h...");
-      while (1);
+    // Final check to ensure all configurations were successful
+    if (success) {
+      Serial.println("DMP enabled and configured successfully.");
+    } else {
+      Serial.println("DMPenabled and configuration failed.");
+      Serial.println("Ensure line 29 (`#define ICM_20948_USE_DMP`) in `ICM_20948_C.h` is uncommented...");
+      while (1); // Halt on failure
     }
-
-    myICM.cfgIntActiveLow(true);  // Active low to be compatible with the breakout board's pullup resistor
-    myICM.cfgIntOpenDrain(false); // Push-pull, though open-drain would also work thanks to the pull-up resistors on the breakout
-    myICM.cfgIntLatch(false);      // Latch the interrupt until cleared
-    myICM.intEnableRawDataReady(true); // enable interrupts on raw data ready
-
   }
+  return initialized;
 }
 
-void IMU_20948::setOdrRate(bool *success)
-{
+void IMU::readData() {
+  // Collects and prints data if a new dataset is available
+  icm_20948_DMP_data_t DMPdata;
+  myICM.readDMPdataFromFIFO(&DMPdata);
+
+  if ((myICM.status == ICM_20948_Stat_Ok) || (myICM.status == ICM_20948_Stat_FIFOMoreDataAvail)) {
+    Serial.print("IMU Data Read - Sensor ID: ");
+    Serial.println(IMUnumber);
+
+    // Extract and store the acceleration, gyroscope, and magnetometer data
+    accelData[0] = DMPdata.Raw_Accel.Data.X;
+    accelData[1] = DMPdata.Raw_Accel.Data.Y;
+    accelData[2] = DMPdata.Raw_Accel.Data.Z;
+
+    gyroData[0] = DMPdata.Raw_Gyro.Data.X;
+    gyroData[1] = DMPdata.Raw_Gyro.Data.Y;
+    gyroData[2] = DMPdata.Raw_Gyro.Data.Z;
+
+    magData[0] = DMPdata.Compass.Data.X;
+    magData[1] = DMPdata.Compass.Data.Y;
+    magData[2] = DMPdata.Compass.Data.Z;
+  }
+
+  // Print the data to Serial
+  printData();
+}
+
+void IMU::printData() {
+  // Formats and prints the collected sensor data to Serial
+  Serial.print("IMU ID: ");
+  Serial.print(IMUnumber);
+  Serial.print(" | Accel (X, Y, Z): ");
+  Serial.print(accelData[0]);
+  Serial.print(", ");
+  Serial.print(accelData[1]);
+  Serial.print(", ");
+  Serial.print(accelData[2]);
+  Serial.print(" | Gyro (X, Y, Z): ");
+  Serial.print(gyroData[0]);
+  Serial.print(", ");
+  Serial.print(gyroData[1]);
+  Serial.print(", ");
+  Serial.print(gyroData[2]);
+  Serial.print(" | Mag (X, Y, Z): ");
+  Serial.print(magData[0]);
+  Serial.print(", ");
+  Serial.print(magData[1]);
+  Serial.print(", ");
+  Serial.println(magData[2]);
+}
+
+void IMU::setOdrRate(bool *success) {
+  // Sets the Output Data Rate (ODR) for accelerometer, gyroscope, and compass
   *success &= (myICM.setDMPODRrate(DMP_ODR_Reg_Accel, 0) == ICM_20948_Stat_Ok);
   *success &= (myICM.setDMPODRrate(DMP_ODR_Reg_Gyro, 0) == ICM_20948_Stat_Ok);
   *success &= (myICM.setDMPODRrate(DMP_ODR_Reg_Cpass, 0) == ICM_20948_Stat_Ok);
 }
 
-void IMU_20948::activate_sensors(bool *success) 
-{
+void IMU::activateSensors(bool *success) {
+  // Enables the necessary sensors on the IMU for data collection
   *success &= (myICM.enableDMPSensor(INV_ICM20948_SENSOR_RAW_GYROSCOPE) == ICM_20948_Stat_Ok);
   *success &= (myICM.enableDMPSensor(INV_ICM20948_SENSOR_RAW_ACCELEROMETER) == ICM_20948_Stat_Ok);
   *success &= (myICM.enableDMPSensor(INV_ICM20948_SENSOR_MAGNETIC_FIELD_UNCALIBRATED) == ICM_20948_Stat_Ok);
-}
-
-void IMU_20948::readData()
-{
-  // se a interrupção for ativada, poderemos coletar os dados
-  if(isrFired[IMUNumber])
-  {
-    icm_20948_DMP_data_t data;
-    myICM.readDMPdataFromFIFO(&data);
-
-    Serial.print("Dados lidos da IMU ");
-    Serial.println(IMUNumber);
-
-    float acc_x = (float)data.Raw_Accel.Data.X;
-    float acc_y = (float)data.Raw_Accel.Data.Y;
-    float acc_z = (float)data.Raw_Accel.Data.Z;
-
-    float x = (float)data.Raw_Gyro.Data.X;
-    float y = (float)data.Raw_Gyro.Data.Y;
-    float z = (float)data.Raw_Gyro.Data.Z;
-
-    float comp_x = (float)data.Compass.Data.X;
-    float comp_y = (float)data.Compass.Data.Y;
-    float comp_z = (float)data.Compass.Data.Z;
-
-    isrFired[IMUNumber] = false;
-  }
-  else
-  {
-    Serial.println("DEU RUIM AO COLETAR OS DADOS...");
-  }
-
-  myICM.clearInterrupts();
 }
 
 ICM_20948_Status_e ICM_20948::initializeDMP(void)
@@ -156,7 +121,6 @@ ICM_20948_Status_e ICM_20948::initializeDMP(void)
   ICM_20948_Status_e  result = ICM_20948_Stat_Ok; 
   ICM_20948_Status_e  worstResult = ICM_20948_Stat_Ok;
 
-  
   result = i2cControllerConfigurePeripheral(0, MAG_AK09916_I2C_ADDR, AK09916_REG_RSV2, 10, true, true, false, true, true); if (result > worstResult) worstResult = result;
   
   result = i2cControllerConfigurePeripheral(1, MAG_AK09916_I2C_ADDR, AK09916_REG_CNTL2, 1, false, true, false, false, false, AK09916_mode_single); if (result > worstResult) worstResult = result;
