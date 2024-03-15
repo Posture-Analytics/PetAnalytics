@@ -1,26 +1,57 @@
-#include "IMU.h"
+#include "time.h"
+#include <WiFi.h>
+#include <Wire.h>
 #include <SPI.h>
 
-/**
- * @brief Represents an IMU (Inertial Measurement Unit) sensor.
- */
-IMU IMU1(0, 12, "IMU-A");
-IMU IMU2(1, 13, "IMU-B");
-IMU IMU3(2, 27, "IMU-B");
+#include "Errors.h"
+#include "Credentials.h"
+#include "Network.h"
+#include "Buffer.h"
+#include "DataReader.h"
+#include "Debug.h"
 
-void setup(){
-  Serial.begin(115200);
-  SPI.begin();
+// Create a errors object to handle them
+Errors errorHandler;
 
-  IMU1.init();
-  IMU2.init();
-  IMU3.init();
+// Create a buffer to store the data to be sent to the database
+IMUDataBuffer dataBuffer;
+
+// Create a DataReader object to read the data from the sensors
+DataReader dataReader;
+
+void setup() {
+
+    // Initialize the serial port and the SPI bus
+    Serial.begin(115200);
+    SPI.begin();
+
+    // Initialize the IMUs
+    if (!dataReader.setup()) {
+        errorHandler.showError(ErrorType::IMUInitFailure, true);
+        LogFatalln("Failed to initialize IMUs");
+    } else {
+    	LogInfoln("IMUs initialized");
+    }
+
+    // Connect to the WiFi network
+    setupWiFi();
+
+    // Sync with the NTP time
+    syncWithNTPTime();
+
+    // Show that the setup was successful
+    errorHandler.showError(ErrorType::None);
 }
 
-void loop(){
-  IMU1.readData();
-  IMU2.readData();
-  IMU3.readData();
+// Main loop, that keep running on Core 1
+void loop() {
+    // Disable the watchdog of Core 0, avoiding reboots caused by
+    // the working time of the sendToDatabase task
+    disableCore0WDT();
 
-  delay(5);
+    dataReader.fillBuffer(&dataBuffer);
+
+    // Print buffer state
+    dataBuffer.printBufferState();
+    dataBuffer.printBufferIndexes();
 }
