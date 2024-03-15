@@ -16,7 +16,7 @@
 #include <Arduino.h>
 
 // Define the capacity of the buffer
-const int BUFFER_CAPACITY = 300;
+const int BUFFER_CAPACITY = 1024;
 
 /**
  * Struct to organize the collected data
@@ -35,9 +35,9 @@ struct imuData {
     byte IMUid = 0;
 
     // 3 (X, Y, Z) x 2 bytes (each value is 16 bits)
-    intt_16 accelData[3] = {0}; 
-    intt_16 gyroData[3] = {0};
-    intt_16 magData[3] = {0};
+    int16_t accelData[3] = {0}; 
+    int16_t gyroData[3] = {0};
+    int16_t magData[3] = {0};
 };
 
 // Define a class to store the collected data
