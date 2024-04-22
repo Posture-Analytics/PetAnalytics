@@ -142,7 +142,7 @@ void IMUDataBuffer::printBufferState() const {
     }
 
     // Prints the buffer state
-    LogVerboseln("Buffer state: ", bufferSize, "/", BUFFER_CAPACITY);
+    LogFatalln("Buffer state: ", bufferSize, "/", BUFFER_CAPACITY);
 }
 
 void IMUDataBuffer::printBufferIndexes() const {
