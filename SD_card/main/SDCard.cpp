@@ -126,7 +126,7 @@ bool SDCard::readFile(const char *path)
 
 bool SDCard::createFile(const char *path) 
 {
-    Serial.printf("Writing file: %s\n", path);
+    Serial.printf("Criando arquivo: %s\n", path);
 
     File file = SD.open(path, FILE_WRITE);
     if (!file) 
@@ -184,7 +184,8 @@ bool SDCard::writeFile(const char *path, const imuData* sample, const char *IMU_
 
     // Resolver o problema da string. 
     String dataString = IMU_ID;
-    dataString = String(sample->timestampMillis);
+    dataString += ",";
+    dataString += String(sample->timestampMillis);
     for (int j = 0; j < 3; j++) {
         dataString += ",";
         dataString += String(sample->accelData[j]);
