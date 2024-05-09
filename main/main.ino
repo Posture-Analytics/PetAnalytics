@@ -8,7 +8,8 @@
 #include "Network.h"
 #include "Buffer.h"
 #include "DataReader.h"
-#include "Database.h"
+// #include "Database.h"
+#include "LocalDatabase.h"
 #include "Debug.h"
 
 // Create a errors object to handle them
@@ -24,7 +25,7 @@ IMUDataBuffer dataBuffer;
 DataReader dataReader;
 
 // Create a Database object to send the data to the database
-Database database;
+LocalDatabase localDatabase;
 
 void setup() {
 
@@ -46,8 +47,8 @@ void setup() {
     // Sync with the NTP time
     syncWithNTPTime();
 
-    // Setup the Firebase Database connection
-    database.setup(getCurrentTime());
+    // // Setup the Firebase Database connection
+    // localDatabase.setup(getCurrentTime());
 
     // Assign the task of sending data to the database to Core 0
     xTaskCreatePinnedToCore(
@@ -62,8 +63,8 @@ void setup() {
     // Sanity delay
     delay(100);
 
-    // Register the boot on the database ("/bootLog")
-    database.bootLog();
+    // // Register the boot on the database ("/bootLog")
+    // localDatabase.bootLog();
 
     errorHandler.showError(ErrorType::None);
 }
@@ -87,7 +88,7 @@ void sendToDatabase(void* pvParameters) {
     while (true) {
         // If the buffer is empty, wait for the data collection task to fill it
         if (!dataBuffer.isBufferEmpty()) {
-            database.sendData(&dataBuffer);
+            localDatabase.sendData(&dataBuffer);
         } else {
             vTaskDelay(2);
             yield();
