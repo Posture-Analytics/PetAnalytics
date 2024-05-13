@@ -189,7 +189,7 @@ bool SDCard::deleteFile(const char *path)
   }
 }
 
-bool SDCard::writeFile(const char *path, const char* dados)
+bool SDCard::writeFile(const char *path, int dado)
 {
   Serial.printf("Editando arquivo: %s\n", path);
 
@@ -198,7 +198,7 @@ bool SDCard::writeFile(const char *path, const char* dados)
         Serial.println("Falha ao abrir o arquivo.");
         return true;
     }
-    if (file.print(dados)) {
+    if (file.print(dado)) {
         Serial.println("Arquivo editado com sucesso.");
     } else {
         Serial.println("Falha ao editar arquivo.");
