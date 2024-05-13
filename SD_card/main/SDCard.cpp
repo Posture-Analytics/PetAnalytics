@@ -1,7 +1,7 @@
 #include <SD.h>
 #include <SPI.h>
 #include "SDCard.h"
-#include "Buffer.h"
+#include "../../main/Buffer.h"
 
 using std::String;
 
