@@ -1,9 +1,16 @@
 #include <SD.h>
 #include <SPI.h>
+#include <iostream>
 #include "SDCard.h"
-#include "../../main/Buffer.h"
+// #include "../../main/Buffer.h"
 
-using std::String;
+#define REASSIGN_PINS
+int sck = 18;   // Pino SCK personalizado
+int miso = 23;  // Pino MISO personalizado
+int mosi = 19;  // Pino MOSI personalizado
+int cs = 5;    // Pino CS personalizado
+
+using std::string;
 
 SDCard::SDCard(){}
 
@@ -11,8 +18,12 @@ SDCard::SDCard(){}
 // muita coisa tinha na internet, apenas adaptei e fiz a parte de OO
 bool SDCard::begin() 
 {
-    if (SD.begin()) 
-    {
+    #ifdef REASSIGN_PINS
+      SPI.begin(sck, miso, mosi, cs);
+      if (SD.begin()) {
+    #else
+      if (SD.begin()) {
+    #endif
         Serial.println("A inicialização do cartão SD foi bem sucedida.");
         cardType = SD.cardType();
         cardSize = SD.cardSize() / (1024 * 1024);
@@ -176,8 +187,27 @@ bool SDCard::deleteFile(const char *path)
   }
 }
 
-// ATÉ ESSE PONTO TÁ FUNCIONANDO, A PARTIR DAQUI EU (AINDA) NÃO SEI TESTAR.
+bool SDCard::writeFile(const char *path, const char* dados)
+{
+  Serial.printf("Editando arquivo: %s\n", path);
 
+  File file = SD.open(path, FILE_WRITE);
+    if (!file) {
+        Serial.println("Falha ao abrir o arquivo.");
+        return true;
+    }
+    if (file.print(dados)) {
+        Serial.println("Arquivo editado com sucesso.");
+    } else {
+        Serial.println("Falha ao editar arquivo.");
+        return false;
+    }
+    file.close();
+    return true;
+}
+
+// ATÉ ESSE PONTO TÁ FUNCIONANDO, A PARTIR DAQUI EU (AINDA) NÃO SEI TESTAR.
+/*
 bool SDCard::writeFile(const char *path, const imuData* sample, const char *IMU_ID) 
 {
     Serial.printf("Editando arquivo: %s\n", path);
@@ -210,3 +240,4 @@ bool SDCard::writeFile(const char *path, const imuData* sample, const char *IMU_
     file.close();
     return true;
 }
+*/

@@ -3,7 +3,6 @@
 
 #include <SD.h>
 #include <SPI.h>
-#include "Buffer.h"
 
 class SDCard {
   public:
@@ -16,7 +15,9 @@ class SDCard {
     bool createDir(const char *path);
     bool readFile(const char *path);
     bool createFile(const char *path);
-    bool writeFile(const char *path, const imuData* sample, const char *IMU_ID);
+    bool writeFile(const char *path, const char* dados);
+    bool renameFile(const char *path1, const char *path2);
+    bool deleteFile(const char *path);
 
     uint8_t cardType;
     uint64_t cardSize;
