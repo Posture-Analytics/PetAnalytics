@@ -15,13 +15,15 @@ class SDCard {
     bool createDir(const char *path);
     bool readFile(const char *path);
     bool createFile(const char *path);
-    bool writeFile(const char *path, int dado);
+    bool writeFile(File*, float);
     bool renameFile(const char *path1, const char *path2);
     bool deleteFile(const char *path);
+    File* openFile(const char *path, bool mode);
+    bool closeFile(File* file);
 
     uint8_t cardType;
     uint64_t cardSize;
-    const char *columns = "ID_IMU, TIMESTAMP, ACC_X, GYR_X, MAG_X, ACC_Y, gyr_Y, MAG_Y, ACC_Z, gyr_Z, MAG_Z\n";
+    const char *columns = "ID_IMU; TIMESTAMP; ACC_X; ACC_Y; ACC_Z; GYR_X; GYR_Y; GYR_Z; MAG_X; MAG_Y; MAG_Z\n";
 };
 
 #endif

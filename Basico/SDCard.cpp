@@ -20,11 +20,9 @@ bool SDCard::begin()
 {
     #ifdef REASSIGN_PINS
       SPI.begin(sck, miso, mosi, cs);
-      if (SD.begin()){
-        Serial.println("Primeiro");
+      if (SD.begin(cs)){
     #else
       if (SD.begin()){
-        Serial.println("Segundo");
     #endif
         Serial.println("A inicialização do cartão SD foi bem sucedida.");
         cardType = SD.cardType();
@@ -134,6 +132,9 @@ bool SDCard::readFile(const char *path)
     Serial.write(file.read());
   }
   file.close();
+
+  Serial.println("[END]");
+
   return true;
 }
 
@@ -189,24 +190,64 @@ bool SDCard::deleteFile(const char *path)
   }
 }
 
-bool SDCard::writeFile(const char *path, int dado)
+bool SDCard::writeFile(File* file, float dado)
 {
-  Serial.printf("Editando arquivo: %s\n", path);
-
-  File file = SD.open(path, FILE_WRITE);
-    if (!file) {
-        Serial.println("Falha ao abrir o arquivo.");
-        return true;
-    }
-    if (file.print(dado)) {
-        Serial.println("Arquivo editado com sucesso.");
-    } else {
-        Serial.println("Falha ao editar arquivo.");
+    if (!file || !*file) {
+        Serial.println("writeFile: Falha ao acessar o arquivo.");
         return false;
     }
-    file.close();
+    if (file->print(dado)) {
+        Serial.println("Arquivo editado com sucesso.");
+    } else {
+        Serial.println("writeFile: Falha ao editar arquivo.");
+        return false;
+    }
+
     return true;
 }
+
+File* SDCard::openFile(const char *path, bool mode)
+{
+  Serial.printf("Abrindo o Arquivo: %s\n", path);
+
+  File* file = nullptr;
+
+  switch (mode) {
+        case 1:
+            file = new File(SD.open(path, FILE_APPEND));
+            break;
+        case 0:
+            file = new File(SD.open(path, FILE_WRITE));
+            break;
+        default:
+            Serial.println("Modo inválido. Use 0 para FILE_WRITE ou 1 para FILE_APPEND.");
+            return nullptr;
+    }
+
+    if (!file || !*file) {
+        Serial.println("Falha ao abrir o arquivo.");
+        delete file;
+        return nullptr;
+    }
+
+    return file;
+}
+
+bool SDCard::closeFile(File* file)
+{
+  Serial.printf("Fechando o Arquivo\n");
+
+  if (file) {
+      file->close();
+      Serial.println("Arquivo fechado com sucesso.");
+      delete file;
+      return true;
+  } else {
+    Serial.println("closeFile: O arquivo não está aberto.");
+    return true;
+  }
+}
+
 
 // ATÉ ESSE PONTO TÁ FUNCIONANDO, A PARTIR DAQUI EU (AINDA) NÃO SEI TESTAR.
 /*

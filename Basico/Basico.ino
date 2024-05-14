@@ -1,15 +1,4 @@
-/****************************************************************
- * Example1_Basics.ino
- * ICM 20948 Arduino Library Demo
- * Use the default configuration to stream 9-axis IMU data
- * Owen Lyke @ SparkFun Electronics
- * Original Creation Date: April 17 2019
- *
- * Please see License.md for the license information.
- *
- * Distributed as-is; no warranty is given.
- ***************************************************************/
-#include "ICM_20948.h" // Click here to get the library: http://librarymanager/All#SparkFun_ICM_20948_IMU
+#include "ICM_20948.h" 
 #include "SDCard.h"
 #include <sstream>
 #include <iostream>
@@ -21,8 +10,7 @@
 #define CS_PIN 2     // Which pin you connect CS to. Used only when "USE_SPI" is defined
 
 #define WIRE_PORT Wire // Your desired Wire port.      Used when "USE_SPI" is not defined
-// The value of the last bit of the I2C address.
-// On the SparkFun 9DoF IMU breakout the default is 1, and when the ADR jumper is closed the value becomes 0
+
 #define AD0_VAL 1
 
 #ifdef USE_SPI
@@ -35,7 +23,6 @@ SDCard sdCard;
 
 void setup()
 {
-
   SERIAL_PORT.begin(115200);
   while (!SERIAL_PORT)
   {
@@ -72,25 +59,43 @@ void setup()
       initialized = true;
     }
   }
+  // SDcard
+  sdCard.begin();
+  Serial.println("Arquivo antes da execução: ");
 }
 
+File* myFile;
+
+int iCounter = 0;
+
 void loop()
-{
+{ 
+  File* file = sdCard.openFile("/teste_imu.csv", 1);
 
-  sdCard.begin();
+  while(iCounter < 300){
+    if (myICM.dataReady()){
+      myICM.getAGMT();
 
-  if (myICM.dataReady())
-  {
-    myICM.getAGMT();         // The values are only updated when you call 'getAGMT'
-                             //    printRawAGMT( myICM.agmt );     // Uncomment this to see the raw values, taken directly from the agmt structure
-    printScaledAGMT(&myICM); // This function takes into account the scale settings from when the measurement was made to calculate the values with units
-    delay(30);
+      char dataString[200];
+
+      sprintf(dataString, "1; NONE; %.2f; %.2f; %.2f; %.2f; %.2f; %.2f; %.2f; %.2f; %.2f\n",
+      myICM.accX(), myICM.accY(), myICM.accZ(),
+      myICM.gyrX(), myICM.gyrY(), myICM.gyrZ(),
+      myICM.magX(), myICM.magY(), myICM.magZ());
+
+      file -> print(dataString);
+                        
+      delay(30);
+    } else{
+      SERIAL_PORT.println("Waiting for data");
+      delay(500);
+    }
+    Serial.println(iCounter);
+    iCounter++;
   }
-  else
-  {
-    SERIAL_PORT.println("Waiting for data");
-    delay(500);
-  }
+
+  file -> close();
+  iCounter = 0;
 }
 
 // Below here are some helper functions to print the data nicely!
@@ -214,19 +219,21 @@ void printScaledAGMT(ICM_20948_SPI *sensor)
 void printScaledAGMT(ICM_20948_I2C *sensor)
 {
 #endif
-  // Variáveis para armazenar os dados
-  std::ostringstream stream;
-  std::string dataString;
+  char dataString[200];  // Tamanho suficiente para armazenar os dados formatados
 
-  // Concatenando os dados em uma string
-  // stream << "Accel: " << sensor->accX() << ", " << sensor->accY() << ", " << sensor->accZ() << "; ";
-  // stream << "Gyro: " << sensor->gyrX() << ", " << sensor->gyrY() << ", " << sensor->gyrZ() << "; ";
-  // stream << "Mag: " << sensor->magX() << ", " << sensor->magY() << ", " << sensor->magZ();
-  // dataString = stream.str();
+// Formatar os dados diretamente em 'dataString'
+  sprintf(dataString, "Accel: %.2f; %.2f; %.2f\n Gyro: %.2f; %.2f; %.2f\n Mag: %.2f; %.2f; %.2f\n",
+    sensor->accX(), sensor->accY(), sensor->accZ(),
+    sensor->gyrX(), sensor->gyrY(), sensor->gyrZ(),
+    sensor->magX(), sensor->magY(), sensor->magZ());
+  
+  Serial.println(dataString);
 
-  sdCard.writeFile("/teste_file.csv", sensor->accX());
-  sdCard.writeFile("/teste_file.csv", sensor->accY());
-  sdCard.writeFile("/teste_file.csv", sensor->accZ());
+  File* file = sdCard.openFile("/teste_imu.csv", 1);
+
+  file -> print(dataString);
+  
+  file->close();
 
   /*
   SERIAL_PORT.print("Scaled. Acc (mg) [ ");
