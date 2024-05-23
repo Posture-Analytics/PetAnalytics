@@ -53,10 +53,5 @@ void loop() {
   dataString3 = IMU3.readData(dataString1);
   Serial.println(dataString3);
 
-  // Liberar a memória alocada
-  free(dataString1);
-  free(dataString2);
-  free(dataString3);
-
   delay(100);
 }
