@@ -1,6 +1,6 @@
 #include "IMU.h"
 #include "PINConfig.h"
-//#include "SDCard.h"
+#include "SDCard.h"
 #include <SPI.h>
 
 /**
@@ -10,7 +10,7 @@ IMU IMU1(0, CS_1_IMU, "IMU-A");
 IMU IMU2(1, CS_2_IMU, "IMU-B");
 IMU IMU3(2, CS_3_IMU, "IMU-C");
 
-//SDCard sdCard;
+SDCard sdCard(5);
 
 SPIClass hspi(HSPI);
 SPIClass vspi(VSPI);
@@ -19,6 +19,11 @@ char* dataString1 = (char*) malloc(350);
 char* dataString2 = (char*) malloc(350);
 char* dataString3 = (char*) malloc(350);
 
+File* file_imu_1;
+File* file_imu_2;
+File* file_imu_3;
+
+// function to free the memonry
 void freeMemory() {
   free(dataString1);
   free(dataString2);
@@ -36,22 +41,46 @@ void setup(){
   IMU3.init(hspi);
 
   // SDcard
-  // sdCard.init(vspi);
-  // sdCard.createFile("/teste_1imu.csv");
-  // sdCard.createFile("/teste_2imu.csv");
-  // sdCard.createFile("/teste_3imu.csv");
+  sdCard.init(vspi);
+  sdCard.createFile("/teste_imu_1.csv");
+  sdCard.createFile("/teste_imu_2.csv");
+  sdCard.createFile("/teste_imu_3.csv");
 
+  //free the memory when exitting
   atexit(freeMemory);
 }
 
+int iCounter = 0;
+
 void loop() {
 
-  dataString1 = IMU1.readData(dataString1);
-  Serial.println(dataString1);
-  dataString2 = IMU2.readData(dataString1);
-  Serial.println(dataString2);
-  dataString3 = IMU3.readData(dataString1);
-  Serial.println(dataString3);
+  //open files
+  file_imu_1 = sdCard.openFile("/teste_imu_1.csv", 1);
+  file_imu_2 = sdCard.openFile("/teste_imu_2.csv", 1);
+  file_imu_3 = sdCard.openFile("/teste_imu_3.csv", 1);
 
-  delay(100);
+  while(iCounter < 1000){
+    dataString1 = IMU1.readData(dataString1);
+    //Serial.println(dataString1);
+    file_imu_1 -> print(dataString1);
+    dataString2 = IMU2.readData(dataString1);
+    //Serial.println(dataString2);
+    file_imu_2 -> print(dataString2);
+    dataString3 = IMU3.readData(dataString1);
+    //Serial.println(dataString3);
+    file_imu_3 -> print(dataString3);
+
+
+    //Serial.print(iCounter);
+    //Serial.print(" ");
+    iCounter++;
+    delay(8);
+  }
+
+  //close files
+  file_imu_1 -> close();
+  file_imu_2 -> close();
+  file_imu_3 -> close();
+  iCounter = 0;
+  Serial.println("Fim de ciclo");
 }

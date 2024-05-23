@@ -59,8 +59,8 @@ char* IMU::readData(char* dataString) {
   strcpy(dataString, "erro");
 
   if ((myICM.status == ICM_20948_Stat_Ok) || (myICM.status == ICM_20948_Stat_FIFOMoreDataAvail)) {
-    Serial.print("IMU Data Read - Sensor ID: ");
-    Serial.println(IMUnumber);
+    //Serial.print("IMU Data Read - Sensor ID: ");
+    //Serial.println(IMUnumber);
 
     // Extract and store the acceleration, gyroscope, and magnetometer data
     accelData[0] = DMPdata.Raw_Accel.Data.X;
@@ -79,6 +79,13 @@ char* IMU::readData(char* dataString) {
       accelData[0], accelData[1], accelData[2],
       gyroData[0], gyroData[1], gyroData[2],
       magData[0], magData[1], magData[2]);
+  } else {
+
+    Serial.print("Sensor ID ");
+    Serial.print(IMUnumber);
+    Serial.print(" returned: ");
+    Serial.println(myICM.statusString());
+
   }
 
   // Print the data to Serial
