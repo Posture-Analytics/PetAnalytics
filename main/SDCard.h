@@ -2,15 +2,16 @@
 #define SDCARD_H
 
 #include <SD.h>
-#include <SPI.h>
 
 class SDCard {
-  public:
-    SDCard();
+public:
+    /**
+     * Constructor.
+     * @param CSpin Pin number for the SPI chip select.
+     */
+    SDCard(int CSpin);
 
-    bool begin();
-    void printCardType();
-    void printCardSize();
+    bool init(SPIClass &spi);
     void printDir(const char *dirname, uint8_t levels);
     bool createDir(const char *path);
     bool readFile(const char *path);
@@ -21,6 +22,11 @@ class SDCard {
     File* openFile(const char *path, bool mode);
     bool closeFile(File* file);
 
+private:
+    void printCardType();
+    void printCardSize();
+
+    int SDpin;
     uint8_t cardType;
     uint64_t cardSize;
     const char *columns = "ID_IMU; TIMESTAMP; ACC_X; ACC_Y; ACC_Z; GYR_X; GYR_Y; GYR_Z; MAG_X; MAG_Y; MAG_Z\n";

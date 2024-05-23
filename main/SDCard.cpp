@@ -1,29 +1,14 @@
 #include <SD.h>
-#include <SPI.h>
 #include <iostream>
 #include "SDCard.h"
+#include "PINConfig.h"
 // #include "../../main/Buffer.h"
 
-#define REASSIGN_PINS
-int sck = 18;   // Pino SCK personalizado
-int miso = 19;  // Pino MISO personalizado
-int mosi = 23;  // Pino MOSI personalizado
-int cs = 5;    // Pino CS personalizado
+SDCard::SDCard(int CSpin): SDpin(CSpin){}
 
-using std::string;
-
-SDCard::SDCard(){}
-
-// MÉTODOS SIMPLES
-// muita coisa tinha na internet, apenas adaptei e fiz a parte de OO
-bool SDCard::begin() 
+bool SDCard::init(SPIClass &spi) 
 {
-    #ifdef REASSIGN_PINS
-      SPI.begin(sck, miso, mosi, cs);
-      if (SD.begin(cs)){
-    #else
-      if (SD.begin()){
-    #endif
+      if (SD.begin(SDpin, spi)){
         Serial.println("A inicialização do cartão SD foi bem sucedida.");
         cardType = SD.cardType();
         cardSize = SD.cardSize() / (1024 * 1024);
@@ -247,40 +232,3 @@ bool SDCard::closeFile(File* file)
     return true;
   }
 }
-
-
-// ATÉ ESSE PONTO TÁ FUNCIONANDO, A PARTIR DAQUI EU (AINDA) NÃO SEI TESTAR.
-/*
-bool SDCard::writeFile(const char *path, const imuData* sample, const char *IMU_ID) 
-{
-    Serial.printf("Editando arquivo: %s\n", path);
-
-    // Resolver o problema da string. 
-    String dataString = IMU_ID;
-    dataString += ",";
-    dataString += String(sample->timestampMillis);
-    for (int j = 0; j < 3; j++) {
-        dataString += ",";
-        dataString += String(sample->accelData[j]);
-        dataString += ",";
-        dataString += String(sample->gyroData[j]);
-        dataString += ",";
-        dataString += String(sample->magData[j]);
-    }
-    dataString += "\n";
-
-    File file = SD.open(path, FILE_WRITE);
-    if (!file) {
-        Serial.println("Falha ao abrir o arquivo.");
-        return true;
-    }
-    if (file.print(dataString)) {
-        Serial.println("Arquivo editado com sucesso.");
-    } else {
-        Serial.println("Falha ao editar arquivo.");
-        return false;
-    }
-    file.close();
-    return true;
-}
-*/
