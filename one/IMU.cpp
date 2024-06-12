@@ -5,12 +5,12 @@ IMU::IMU(int number, int CSpin, const char* name):
   IMUnumber(number), IMUpin(CSpin), IMUname(name) {}
 
 bool IMU::init(SPIClass &spi) {
-  // Continues attempting initialization until successful
+  //Continues attempting initialization until successful
   while (!initialized) {
-    // Initializes SPI communication
+    //Initializes SPI communication
     myICM.begin(IMUpin, spi);
 
-    // Checks the status of the communication and prints it
+    //Checks the status of the communication and prints it
     Serial.print("Initializing sensor '");
     Serial.print(IMUname);
     Serial.print(" - ");
@@ -19,7 +19,7 @@ bool IMU::init(SPIClass &spi) {
     Serial.print(IMUpin);
     Serial.println(")'...");
 
-    // If there's an error, retry after a brief pause
+    //If there's an error, retry after a brief pause
     if (myICM.status != ICM_20948_Stat_Ok) {
       Serial.println("Retry initialization...");
       delay(500);
@@ -28,10 +28,10 @@ bool IMU::init(SPIClass &spi) {
       initialized = true;
     }
 
-    // Initialize the Digital Motion Processor (DMP) and check the result
+    //Initialize the Digital Motion Processor (DMP) and check the result
     bool success = (myICM.initializeDMP() == ICM_20948_Stat_Ok);
 
-    // Sensor activation, ODR adjustment, FIFO, and DMP configurations
+    //Sensor activation, ODR adjustment, FIFO, and DMP configurations
     activateSensors(&success);
     setOdrRate(&success);
     success &= (myICM.enableFIFO() == ICM_20948_Stat_Ok);
@@ -39,63 +39,66 @@ bool IMU::init(SPIClass &spi) {
     success &= (myICM.resetDMP() == ICM_20948_Stat_Ok);
     success &= (myICM.resetFIFO() == ICM_20948_Stat_Ok);
 
-    // Final check to ensure all configurations were successful
+    //Final check to ensure all configurations were successful
     if (success) {
       Serial.println("DMP enabled and configured successfully.");
     } else {
       Serial.println("DMPenabled and configuration failed.");
       Serial.println("Ensure line 29 (`#define ICM_20948_USE_DMP`) in `ICM_20948_C.h` is uncommented...");
-      while (1); // Halt on failure
+      while (1); //Halt on failure
     }
   }
   return initialized;
 }
 
-char* IMU::readData(char* dataString) {
-  // Collects and prints data if a new dataset is available
+bool IMU::dataAvailable() {
   icm_20948_DMP_data_t DMPdata;
   myICM.readDMPdataFromFIFO(&DMPdata);
 
-  strcpy(dataString, "");
+  return (myICM.status == ICM_20948_Stat_Ok) || (myICM.status == ICM_20948_Stat_FIFOMoreDataAvail);
+}
 
-  if ((myICM.status == ICM_20948_Stat_Ok) || (myICM.status == ICM_20948_Stat_FIFOMoreDataAvail)) {
-    //Serial.print("IMU Data Read - Sensor ID: ");
-    //Serial.println(IMUnumber);
+char* IMU::readData(char* dataString) {
+  //Collects and prints data if a new dataset is available
+  icm_20948_DMP_data_t DMPdata;
+  myICM.readDMPdataFromFIFO(&DMPdata);
 
-    // Extract and store the acceleration, gyroscope, and magnetometer data
-    accelData[0] = DMPdata.Raw_Accel.Data.X;
-    accelData[1] = DMPdata.Raw_Accel.Data.Y;
-    accelData[2] = DMPdata.Raw_Accel.Data.Z;
+  // Serial.print("IMU Data Read - Sensor ID: ");
+  // Serial.println(IMUnumber);
 
-    gyroData[0] = DMPdata.Raw_Gyro.Data.X;
-    gyroData[1] = DMPdata.Raw_Gyro.Data.Y;
-    gyroData[2] = DMPdata.Raw_Gyro.Data.Z;
+  //Extract and store the acceleration, gyroscope, and magnetometer data
+  accelData[0] = DMPdata.Raw_Accel.Data.X;
+  accelData[1] = DMPdata.Raw_Accel.Data.Y;
+  accelData[2] = DMPdata.Raw_Accel.Data.Z;
 
-    magData[0] = DMPdata.Compass.Data.X;
-    magData[1] = DMPdata.Compass.Data.Y;
-    magData[2] = DMPdata.Compass.Data.Z;
+  gyroData[0] = DMPdata.Raw_Gyro.Data.X;
+  gyroData[1] = DMPdata.Raw_Gyro.Data.Y;
+  gyroData[2] = DMPdata.Raw_Gyro.Data.Z;
 
-    snprintf(dataString, 350, "1; NONE; %d; %d; %d; %d; %d; %d; %d; %d; %d\n",
-      accelData[0], accelData[1], accelData[2],
-      gyroData[0], gyroData[1], gyroData[2],
-      magData[0], magData[1], magData[2]);
-  }
+  magData[0] = DMPdata.Compass.Data.X;
+  magData[1] = DMPdata.Compass.Data.Y;
+  magData[2] = DMPdata.Compass.Data.Z;
 
-  // Print the data to Serial
-  //Serial.println(dataString);
+  snprintf(dataString, 350, "1; NONE; %d; %d; %d; %d; %d; %d; %d; %d; %d\n",
+    accelData[0], accelData[1], accelData[2],
+    gyroData[0], gyroData[1], gyroData[2],
+    magData[0], magData[1], magData[2]);
+
+  //Print the data to Serial
+  // Serial.println(dataString);
 
   return dataString;
 }
 
 void IMU::setOdrRate(bool *success) {
-  // Sets the Output Data Rate (ODR) for accelerometer, gyroscope, and compass
+  //Sets the Output Data Rate (ODR) for accelerometer, gyroscope, and compass
   *success &= (myICM.setDMPODRrate(DMP_ODR_Reg_Accel, 0) == ICM_20948_Stat_Ok);
   *success &= (myICM.setDMPODRrate(DMP_ODR_Reg_Gyro, 0) == ICM_20948_Stat_Ok);
   *success &= (myICM.setDMPODRrate(DMP_ODR_Reg_Cpass, 0) == ICM_20948_Stat_Ok);
 }
 
 void IMU::activateSensors(bool *success) {
-  // Enables the necessary sensors on the IMU for data collection
+  //Enables the necessary sensors on the IMU for data collection
   *success &= (myICM.enableDMPSensor(INV_ICM20948_SENSOR_RAW_GYROSCOPE) == ICM_20948_Stat_Ok);
   *success &= (myICM.enableDMPSensor(INV_ICM20948_SENSOR_RAW_ACCELEROMETER) == ICM_20948_Stat_Ok);
   *success &= (myICM.enableDMPSensor(INV_ICM20948_SENSOR_MAGNETIC_FIELD_UNCALIBRATED) == ICM_20948_Stat_Ok);

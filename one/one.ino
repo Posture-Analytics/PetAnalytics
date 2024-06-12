@@ -17,7 +17,7 @@ char* dataString1 = (char*) malloc(350);
 
 File* file_imu_1;
 
-// function to free the memonry
+//Function to free the memonry
 void freeMemory() {
   free(dataString1);
 }
@@ -30,11 +30,11 @@ void setup(){
 
   IMU1.init(hspi);
 
-  // SDcard
+  //SDcard
   sdCard.init(vspi);
   sdCard.createFile("/teste_imu_1.csv");
 
-  //free the memory when exitting
+  //Free the memory when exitting
   atexit(freeMemory);
 }
 
@@ -42,19 +42,22 @@ int iCounter = 0;
 
 void loop() {
 
-  //open files
+  //Open files
   file_imu_1 = sdCard.openFile("/teste_imu_1.csv", 1);
 
   while(iCounter < 1000){
-    dataString1 = IMU1.readData(dataString1);
-    //Serial.println(dataString1);
-    file_imu_1 -> print(dataString1);
 
-    iCounter++;
-    delay(10);
+    if (IMU1.dataAvailable()){
+      dataString1 = IMU1.readData(dataString1);
+      //Serial.println(dataString1);
+      file_imu_1 -> print(dataString1);
+      iCounter++;
+    }
+
+    delay(2);
   }
 
-  //close files
+  //Close files
   file_imu_1 -> close();
   iCounter = 0;
   Serial.println("Fim de ciclo");

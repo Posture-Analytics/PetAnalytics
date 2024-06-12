@@ -33,6 +33,12 @@ public:
      */
     char* readData(char* dataString);
 
+    /**
+     * Checks if data is available from the IMU sensor.
+     * @return true if data is available, false otherwise.
+     */
+    bool dataAvailable();
+
 private:
     ICM_20948_SPI myICM; // SPI object for communication with the sensor.
     int IMUnumber; // Unique identifier for the IMU sensor.
