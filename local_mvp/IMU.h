@@ -31,9 +31,9 @@ public:
     /**
      * Reads data from the sensor, including acceleration, gyroscope, and magnetometer readings.
      */
-    char* readData(char* dataString);
+    // char* readData(char* dataString);
+    bool readData();
 
-private:
     ICM_20948_SPI myICM; // SPI object for communication with the sensor.
     int IMUnumber; // Unique identifier for the IMU sensor.
     int IMUpin; // Pin number for the SPI chip select.

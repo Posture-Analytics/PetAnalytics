@@ -1,5 +1,6 @@
 #include "IMU.h"
 #include "ICM_20948.h"
+#include "Debug.h"
 
 IMU::IMU(int number, int CSpin, const char* name):
   IMUnumber(number), IMUpin(CSpin), IMUname(name) {}
@@ -51,47 +52,35 @@ bool IMU::init(SPIClass &spi) {
   return initialized;
 }
 
-char* IMU::readData(char* dataString) {
-  // Collects and prints data if a new dataset is available
-  icm_20948_DMP_data_t DMPdata;
-  myICM.readDMPdataFromFIFO(&DMPdata);
+bool IMU::readData()
+{
+	// Collects and prints data if a new dataset is available
+	icm_20948_DMP_data_t DMPdata;
+	myICM.readDMPdataFromFIFO(&DMPdata);
 
-  strcpy(dataString, "erro");
+	if ((myICM.status == ICM_20948_Stat_Ok) || (myICM.status == ICM_20948_Stat_FIFOMoreDataAvail)) {
+		LogDebug("IMU Data Read - Sensor ID: ");
+		LogDebugln(IMUnumber);
 
-  if ((myICM.status == ICM_20948_Stat_Ok) || (myICM.status == ICM_20948_Stat_FIFOMoreDataAvail)) {
-    //Serial.print("IMU Data Read - Sensor ID: ");
-    //Serial.println(IMUnumber);
+		// Extract and store the acceleration, gyroscope, and magnetometer data
+		accelData[0] = DMPdata.Raw_Accel.Data.X;
+		accelData[1] = DMPdata.Raw_Accel.Data.Y;
+		accelData[2] = DMPdata.Raw_Accel.Data.Z;
 
-    // Extract and store the acceleration, gyroscope, and magnetometer data
-    accelData[0] = DMPdata.Raw_Accel.Data.X;
-    accelData[1] = DMPdata.Raw_Accel.Data.Y;
-    accelData[2] = DMPdata.Raw_Accel.Data.Z;
+		gyroData[0] = DMPdata.Raw_Gyro.Data.X;
+		gyroData[1] = DMPdata.Raw_Gyro.Data.Y;
+		gyroData[2] = DMPdata.Raw_Gyro.Data.Z;
 
-    gyroData[0] = DMPdata.Raw_Gyro.Data.X;
-    gyroData[1] = DMPdata.Raw_Gyro.Data.Y;
-    gyroData[2] = DMPdata.Raw_Gyro.Data.Z;
+		magData[0] = DMPdata.Compass.Data.X;
+		magData[1] = DMPdata.Compass.Data.Y;
+		magData[2] = DMPdata.Compass.Data.Z;
 
-    magData[0] = DMPdata.Compass.Data.X;
-    magData[1] = DMPdata.Compass.Data.Y;
-    magData[2] = DMPdata.Compass.Data.Z;
+		return true;
+	} else
+		return false;
 
-    snprintf(dataString, 350, "1; NONE; %d; %d; %d; %d; %d; %d; %d; %d; %d\n",
-      accelData[0], accelData[1], accelData[2],
-      gyroData[0], gyroData[1], gyroData[2],
-      magData[0], magData[1], magData[2]);
-  } else {
-
-    Serial.print("Sensor ID ");
-    Serial.print(IMUnumber);
-    Serial.print(" returned: ");
-    Serial.println(myICM.statusString());
-
-  }
-
-  // Print the data to Serial
-  //Serial.println(dataString);
-
-  return dataString;
+	// Print the data to Serial
+	// printData();
 }
 
 void IMU::setOdrRate(bool *success) {

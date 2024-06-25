@@ -31,7 +31,7 @@ public:
      * 
      * @return true if everything went well, false otherwise
      */
-    bool setup();
+    bool setup(SPIClass& hspi);
 
     /**
      * Collect data from the sensors and store it in the buffer location represented by the pointer
