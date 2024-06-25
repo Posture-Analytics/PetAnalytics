@@ -11,6 +11,7 @@
 // #include "Database.h"
 #include "LocalDatabase.h"
 #include "Debug.h"
+#include "PINConfig.h"
 
 // Create a errors object to handle them
 Errors errorHandler;
@@ -27,14 +28,20 @@ DataReader dataReader;
 // Create a Database object to send the data to the database
 LocalDatabase localDatabase;
 
+SPIClass hspi(HSPI);
+SPIClass vspi(VSPI);
+
 void setup() {
 
     // Initialize the serial port and the SPI bus
     Serial.begin(115200);
-    SPI.begin();
+    // SPI.begin();
+
+    hspi.begin(HSPI_SCLK, HSPI_MISO, HSPI_MOSI, HSPI_CS);
+    vspi.begin(VSPI_SCLK, VSPI_MISO, VSPI_MOSI, VSPI_CS);
 
     // Initialize the IMUs
-    if (!dataReader.setup()) {
+    if (!dataReader.setup(hspi)) {
         errorHandler.showError(ErrorType::IMUInitFailure, true);
         LogFatalln("Failed to initialize IMUs");
     } else {
@@ -47,8 +54,8 @@ void setup() {
     // Sync with the NTP time
     syncWithNTPTime();
 
-    // // Setup the Firebase Database connection
-    // localDatabase.setup(getCurrentTime());
+    // Setup the Firebase Database connection
+    localDatabase.setup(vspi);
 
     // Assign the task of sending data to the database to Core 0
     xTaskCreatePinnedToCore(
@@ -90,7 +97,7 @@ void sendToDatabase(void* pvParameters) {
         if (!dataBuffer.isBufferEmpty()) {
             localDatabase.sendData(&dataBuffer);
         } else {
-            vTaskDelay(2);
+            vTaskDelay(1);
             yield();
         }
     }

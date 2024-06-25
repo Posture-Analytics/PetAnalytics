@@ -26,7 +26,7 @@
 #define MOCK_SENSOR                     2 // Mock the sensor
 
 // Set the debug level
-#define DEBUG_LEVEL                     DEBUG_LEVEL_VERBOSE
+#define DEBUG_LEVEL                     DEBUG
 
 // Set the status of the functionalities (ENABLE_SENSOR or DISABLE_SENSOR)
 #define WIFI_STATUS                     ENABLE

@@ -1,20 +1,25 @@
 #include "DataReader.h"
 #include "Network.h"
 #include "Buffer.h"
+#include "PINConfig.h"
 
-bool DataReader::setup() {
+#include "SPI.h"
 
-    // Instantiate the IMUs
-    IMUarray[0] = new IMU(0, 12, "IMU-A");
-    IMUarray[1] = new IMU(1, 13, "IMU-B");
-    IMUarray[2] = new IMU(2, 27, "IMU-C");
+bool DataReader::setup(SPIClass& hspi) {
+    // // Instantiate the IMUs
+    // IMUarray[0] = new IMU(0, 12, "IMU-A");
+    // IMUarray[1] = new IMU(1, 13, "IMU-B");
+    // IMUarray[2] = new IMU(2, 27, "IMU-C");
+    IMUarray[0] = new IMU(0, CS_1_IMU, "IMU-A");
+    IMUarray[1] = new IMU(1, CS_2_IMU, "IMU-B");
+    IMUarray[2] = new IMU(2, CS_3_IMU, "IMU-C");
 
     // Set a flag to indicate whether the initialization was successful
     bool success = true;
 
     // Initialize the IMUs
     for (int i = 0; i < 3; i++) {
-        success &= IMUarray[i]->init();
+        success &= IMUarray[i]->init(hspi);
     }
 
     // If everything went well, return true

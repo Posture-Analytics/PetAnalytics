@@ -8,6 +8,7 @@
 #include "Buffer.h"
 // #include "Credentials.h"
 #include "Base64Encoding.h"
+#include "SDCard.h"
 
 // Send Rate of the data sending, in hertz (Hz)
 const int SEND_RATE = 1;
@@ -47,6 +48,8 @@ class Database {
     // Set the data path on the database where the sensor data will be stored
     String fullDataPath;
 
+    String payloadString = "";
+
     // Store whether or not the last sample from the sensors was valid (non-zero)
     bool last_was_valid;
 
@@ -76,6 +79,12 @@ class Database {
 
     // Base64 encoder object
     Base64Encoder encoder;
+
+    File* sdcard_file;
+
+    SDCard sdCard(5);
+
+    String local_database_file_path = "/localDatabase.csv";
 
 public:
     /**
