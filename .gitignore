@@ -1,0 +1,47 @@
+# Arduino
+*.ino.*
+*.sketch~
+*.cpp~
+*.h~
+*.bak
+*.swp
+*.sw~
+*.swm
+*.swo
+*.elf
+*.hex
+*.bin
+*.eep
+*.elf
+*.o
+*.d
+*.a
+*.so
+.build/
+*.bin
+*.elf
+*.hex
+*.map
+*.sym
+*.lss
+*.eep
+*.o
+*.d
+*.a
+*.dep
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+*.Spotlight-V100
+*.Trashes
+ehthumbs.db
+desktop.ini
+
+# C++ specific files
+*.obj
+*.exe
+*.log
+
+# Configuration file
+config.h
