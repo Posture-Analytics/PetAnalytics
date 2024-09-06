@@ -44,4 +44,5 @@ desktop.ini
 *.log
 
 # Configuration file
-config.h
+**/config.h
+M5Stack/firebase/config.h
