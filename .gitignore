@@ -46,3 +46,6 @@ desktop.ini
 # Configuration file
 **/config.h
 M5Stack/firebase/config.h
+
+#venv
+/venv
