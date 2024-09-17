@@ -11,7 +11,7 @@ class VideoLabeler(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Video Labeler")
-        self.geometry("800x600")
+        self.geometry("1000x600")  # Aumentar a largura para acomodar o quadro à direita
 
         # Variáveis de controle
         self.video_path = 'teste.mp4'  # Atualize para o caminho do seu vídeo
@@ -48,6 +48,12 @@ class VideoLabeler(tk.Tk):
         # Opções de labels predefinidas
         self.label_options = ['Caminhando', 'Comendo', 'Dormindo', 'Brincando']
 
+        # Variáveis para seleção e edição de regiões
+        self.region_items = {}  # Mapear itens do canvas para regiões
+        self.selected_region = None
+        self.resizing_region = None
+        self.resizing_edge = None
+
         # Criação dos widgets
         self.create_widgets()
 
@@ -60,20 +66,28 @@ class VideoLabeler(tk.Tk):
     def create_widgets(self):
         # Frame principal
         main_frame = tk.Frame(self)
-        main_frame.grid(row=0, column=0, sticky='nsew')
+        main_frame.pack(fill='both', expand=True)
 
-        # Configurar pesos para o redimensionamento adequado
-        self.grid_rowconfigure(0, weight=1)
-        self.grid_columnconfigure(0, weight=1)
-        main_frame.grid_rowconfigure(0, weight=1)
-        main_frame.grid_columnconfigure(0, weight=1)
+        # Configurar o grid do main_frame
+        main_frame.rowconfigure(0, weight=1)
+        main_frame.columnconfigure(0, weight=3)  # Coluna para o vídeo e controles
+        main_frame.columnconfigure(1, weight=1)  # Coluna para o quadro de regiões
+
+        # Frame para o vídeo e controles
+        video_frame = tk.Frame(main_frame)
+        video_frame.grid(row=0, column=0, sticky='nsew')
+        video_frame.rowconfigure(0, weight=1)  # Linha para o vídeo
+        video_frame.rowconfigure(1, weight=0)  # Linha para os controles
+        video_frame.rowconfigure(2, weight=0)  # Linha para a timeline
+        video_frame.rowconfigure(3, weight=0)  # Linha para a scrollbar
+        video_frame.columnconfigure(0, weight=1)
 
         # Área de exibição de vídeo
-        self.video_label = tk.Label(main_frame)
+        self.video_label = tk.Label(video_frame)
         self.video_label.grid(row=0, column=0, sticky='nsew')
 
         # Controles de reprodução
-        controls_frame = tk.Frame(main_frame)
+        controls_frame = tk.Frame(video_frame)
         controls_frame.grid(row=1, column=0, pady=5)
 
         tk.Button(controls_frame, text="Play/Pause", command=self.toggle_playback).pack(side='left')
@@ -83,10 +97,14 @@ class VideoLabeler(tk.Tk):
         tk.Button(controls_frame, text="Modo Frame a Frame", command=self.toggle_frame_by_frame_mode).pack(side='left')
 
         # Botões de frame-by-frame
-        self.prev_frame_button = tk.Button(controls_frame, text="<< Frame Anterior")
+        self.prev_frame_button = tk.Button(controls_frame, text="<< Frame Anterior", command=self.prev_frame)
         self.prev_frame_button.pack(side='left')
-        self.next_frame_button = tk.Button(controls_frame, text="Próximo Frame >>")
+        self.next_frame_button = tk.Button(controls_frame, text="Próximo Frame >>", command=self.next_frame)
         self.next_frame_button.pack(side='left')
+
+        # Inicialmente desabilitados
+        self.prev_frame_button.config(state='disabled')
+        self.next_frame_button.config(state='disabled')
 
         # Eventos para avanço contínuo
         self.prev_frame_button.bind("<ButtonPress>", self.start_holding_prev)
@@ -94,19 +112,12 @@ class VideoLabeler(tk.Tk):
         self.next_frame_button.bind("<ButtonPress>", self.start_holding_next)
         self.next_frame_button.bind("<ButtonRelease>", self.stop_holding_next)
 
-        # Inicialmente desabilitados
-        self.prev_frame_button.config(state='disabled')
-        self.next_frame_button.config(state='disabled')
-
         # Barra de progresso personalizada
-        self.timeline_canvas = tk.Canvas(main_frame, height=50, bg='lightgray')
+        self.timeline_canvas = tk.Canvas(video_frame, height=50, bg='lightgray')
         self.timeline_canvas.grid(row=2, column=0, sticky='ew')
-        self.timeline_canvas.bind("<Button-1>", self.on_timeline_click)
-        self.timeline_canvas.bind("<Control-Button-1>", self.start_region)
-        self.timeline_canvas.bind("<Control-Button-3>", self.end_region)
 
         # Adicionar barra de rolagem horizontal
-        self.timeline_scrollbar = tk.Scrollbar(main_frame, orient='horizontal', command=self.timeline_canvas.xview)
+        self.timeline_scrollbar = tk.Scrollbar(video_frame, orient='horizontal', command=self.timeline_canvas.xview)
         self.timeline_scrollbar.grid(row=3, column=0, sticky='ew')
         self.timeline_canvas.config(xscrollcommand=self.timeline_scrollbar.set)
 
@@ -115,6 +126,36 @@ class VideoLabeler(tk.Tk):
 
         # Evento para mostrar o tempo na timeline
         self.timeline_canvas.bind("<Motion>", self.show_time_on_timeline)
+
+        # Ajustar bindings
+        self.timeline_canvas.bind("<Shift-Button-1>", self.on_timeline_shift_click)
+        self.timeline_canvas.bind("<Button-1>", self.on_timeline_click)
+        self.timeline_canvas.bind("<Control-Button-1>", self.start_region)
+        self.timeline_canvas.bind("<Control-Button-3>", self.end_region)
+
+        # Vincular eventos para seleção e edição de regiões
+        self.timeline_canvas.tag_bind('region', '<Button-1>', self.on_region_click)
+        self.timeline_canvas.tag_bind('start_handle', '<Shift-Button-3>', self.start_resizing)
+        self.timeline_canvas.tag_bind('end_handle', '<Shift-Button-3>', self.start_resizing)
+
+        # Vincular a tecla Delete para deletar a região selecionada
+        self.bind('<Delete>', self.delete_region)
+
+        # Quadro para exibir as regiões criadas
+        regions_frame = tk.Frame(main_frame)
+        regions_frame.grid(row=0, column=1, sticky='nsew')
+        regions_frame.rowconfigure(1, weight=1)
+        regions_frame.columnconfigure(0, weight=1)
+
+        # Label para o quadro de regiões
+        tk.Label(regions_frame, text="Regiões Criadas").grid(row=0, column=0)
+
+        # Listbox para exibir as regiões
+        self.regions_listbox = tk.Listbox(regions_frame)
+        self.regions_listbox.grid(row=1, column=0, sticky='nsew')
+
+        # Vincular o evento de seleção
+        self.regions_listbox.bind('<<ListboxSelect>>', self.on_regions_listbox_select)
 
     def bind_mousewheel_events(self):
         # Eventos de scroll para Windows
@@ -129,7 +170,7 @@ class VideoLabeler(tk.Tk):
             if self.cap.isOpened():
                 ret, frame = self.cap.read()
                 if ret:
-                    self.current_frame_index = int(self.cap.get(cv2.CAP_PROP_POS_FRAMES))
+                    self.current_frame_index = int(self.cap.get(cv2.CAP_PROP_POS_FRAMES)) - 1  # Ajuste para obter o índice correto
                     frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
                     # Calcular o tempo atual em segundos
@@ -191,8 +232,8 @@ class VideoLabeler(tk.Tk):
         return frame
 
     def toggle_playback(self):
-        if self.is_frame_by_frame:
-            return  # Não alterar o estado de reprodução no modo frame-by-frame
+        if not self.is_playing and self.is_frame_by_frame:
+            self.toggle_frame_by_frame_mode()  # Desativar o modo frame-by-frame ao retornar ao play
         self.is_playing = not self.is_playing
         print("Playback:", "Playing" if self.is_playing else "Paused")
 
@@ -216,6 +257,7 @@ class VideoLabeler(tk.Tk):
         self.cap.set(cv2.CAP_PROP_POS_FRAMES, self.current_frame_index)
         ret, frame = self.cap.read()
         if ret:
+            self.current_frame_index = int(self.cap.get(cv2.CAP_PROP_POS_FRAMES)) - 1  # Ajuste para obter o índice correto
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
             # Calcular o tempo atual em segundos
@@ -235,6 +277,7 @@ class VideoLabeler(tk.Tk):
             self.video_label.configure(image=imgtk)
 
     def next_frame(self, event=None):
+        print(self.current_frame_index)
         if self.current_frame_index < self.total_frames - 1:
             self.current_frame_index += 1
             self.display_current_frame()
@@ -256,12 +299,11 @@ class VideoLabeler(tk.Tk):
         self.holding_next = False
 
     def hold_next_frame(self):
+        print("blaaa")
         if self.holding_next:
-            # Avançar mais frames para aumentar a velocidade
-            for _ in range(3):  # Ajuste o número de frames para controlar a velocidade
-                self.next_frame()
+            self.next_frame()
             self.update_idletasks()  # Forçar atualização da interface
-            self.after(20, self.hold_next_frame)  # Intervalo reduzido para aumentar a velocidade
+            self.after(50, self.hold_next_frame)  # Intervalo ajustado para avançar um frame
 
     def start_holding_prev(self, event):
         self.holding_prev = True
@@ -272,16 +314,32 @@ class VideoLabeler(tk.Tk):
 
     def hold_prev_frame(self):
         if self.holding_prev:
-            # Retroceder mais frames para aumentar a velocidade
-            for _ in range(3):  # Ajuste o número de frames para controlar a velocidade
-                self.prev_frame()
+            self.prev_frame()
             self.update_idletasks()  # Forçar atualização da interface
-            self.after(20, self.hold_prev_frame)  # Intervalo reduzido para aumentar a velocidade
+            self.after(50, self.hold_prev_frame)  # Intervalo ajustado para retroceder um frame
 
     def on_timeline_click(self, event):
-        # Calcular o frame correspondente ao local clicado
+        # Verificar se o clique foi fora de uma região
+        items = self.timeline_canvas.find_overlapping(event.x, event.y, event.x, event.y)
+        is_region = False
+        for item in items:
+            tags = self.timeline_canvas.gettags(item)
+            if 'region' in tags or 'start_handle' in tags or 'end_handle' in tags:
+                is_region = True
+                break
+
+        if not is_region:
+            # Desselecionar qualquer região selecionada
+            self.selected_region = None
+            self.draw_timeline()
+
+    def on_timeline_shift_click(self, event):
+        # Definir o frame atual para a posição clicada
         x = self.timeline_canvas.canvasx(event.x)
-        total_timeline_width = float(self.timeline_canvas.cget('scrollregion').split()[2])
+        scrollregion = self.timeline_canvas.cget('scrollregion')
+        if not scrollregion:
+            return
+        total_timeline_width = float(scrollregion.split()[2])
         frame = int((x / total_timeline_width) * self.total_frames)
         frame = max(0, min(frame, self.total_frames - 1))
         self.current_frame_index = frame
@@ -320,6 +378,7 @@ class VideoLabeler(tk.Tk):
                 }
                 self.labels.append(region)
                 print(f"Região de {region['start']} a {region['end']} com label '{label}'")
+                self.update_regions_listbox()  # Atualizar a lista de regiões
             self.selecting_region = False
             self.draw_timeline()
 
@@ -333,7 +392,7 @@ class VideoLabeler(tk.Tk):
         label_window = tk.Toplevel(self)
         label_window.title("Selecione a Label")
 
-        # **Aguardar até que a janela seja visível**
+        # Aguardar até que a janela seja visível
         label_window.wait_visibility()
 
         # Tornar a janela modal
@@ -393,17 +452,42 @@ class VideoLabeler(tk.Tk):
             self.timeline_canvas.create_text(x + 5, 20, text=time_text, anchor='w', fill='black')
             current_time += tick_interval
 
+        # Limpar o mapeamento anterior
+        self.region_items.clear()
+
         # Desenhar os marcadores de início de região
         for start_frame in self.region_start_markers:
             x = (start_frame / self.total_frames) * total_timeline_width
             self.timeline_canvas.create_line(x, 0, x, 50, fill='green', dash=(4, 2))
 
         # Desenhar as regiões
+        handle_size = 5  # Tamanho dos handles
         for region in self.labels:
             x1 = (region['start'] / self.total_frames) * total_timeline_width
             x2 = (region['end'] / self.total_frames) * total_timeline_width
-            self.timeline_canvas.create_rectangle(x1, 30, x2, 50, fill='blue', stipple='gray25')
-            self.timeline_canvas.create_text((x1 + x2) / 2, 40, text=region['label'], fill='white')
+
+            # Determinar a cor com base na seleção
+            fill_color = 'blue'
+            if region == self.selected_region:
+                fill_color = 'red'  # Destacar a região selecionada
+
+            # Desenhar a região
+            rect_id = self.timeline_canvas.create_rectangle(x1, 30, x2, 50, fill=fill_color, stipple='gray25', tags='region')
+            text_id = self.timeline_canvas.create_text((x1 + x2) / 2, 40, text=region['label'], fill='white', tags='region')
+
+            # Mapear os IDs dos itens à região correspondente
+            self.region_items[rect_id] = region
+            self.region_items[text_id] = region
+
+            # Adicionar handles nas bordas
+            # Handle inicial
+            start_handle_id = self.timeline_canvas.create_rectangle(x1 - handle_size, 30, x1 + handle_size, 50, fill='', outline='', tags='start_handle')
+            # Handle final
+            end_handle_id = self.timeline_canvas.create_rectangle(x2 - handle_size, 30, x2 + handle_size, 50, fill='', outline='', tags='end_handle')
+
+            # Mapear os handles à região e ao tipo de borda
+            self.region_items[start_handle_id] = (region, 'start')
+            self.region_items[end_handle_id] = (region, 'end')
 
         # Desenhar o indicador de posição atual
         current_x = (self.current_frame_index / self.total_frames) * total_timeline_width
@@ -442,7 +526,10 @@ class VideoLabeler(tk.Tk):
 
         # Calcular o tempo correspondente à posição do mouse
         x = self.timeline_canvas.canvasx(event.x)
-        total_timeline_width = float(self.timeline_canvas.cget('scrollregion').split()[2])
+        scrollregion = self.timeline_canvas.cget('scrollregion')
+        if not scrollregion:
+            return
+        total_timeline_width = float(scrollregion.split()[2])
         time_sec = (x / total_timeline_width) * self.duration
         time_sec = max(0, min(time_sec, self.duration))
 
@@ -471,7 +558,7 @@ class VideoLabeler(tk.Tk):
     def save_labels_to_csv(self):
         video_filename = os.path.splitext(os.path.basename(self.video_path))[0]
         csv_filename = f"{video_filename}_labels.csv"
-        with open(csv_filename, 'w', newline='') as csvfile:
+        with open(csv_filename, 'w', newline='', encoding='utf-8') as csvfile:
             fieldnames = ['start_frame', 'end_frame', 'start_time', 'end_time', 'label']
             writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
             writer.writeheader()
@@ -488,6 +575,92 @@ class VideoLabeler(tk.Tk):
                     'label': label['label']
                 })
         print(f"Labels salvas em {csv_filename}")
+
+    # Novos métodos para seleção e edição de regiões
+
+    def on_region_click(self, event):
+        # Obter o item que foi clicado
+        item = self.timeline_canvas.find_withtag('current')[0]
+        # Obter a região associada a este item
+        region = self.region_items.get(item)
+        if isinstance(region, dict):
+            self.selected_region = region
+            print(f"Região selecionada: Início {region['start']}, Fim {region['end']}, Label '{region['label']}'")
+            self.draw_timeline()
+            self.highlight_region_in_listbox()
+
+    def delete_region(self, event):
+        if self.selected_region:
+            self.labels.remove(self.selected_region)
+            print(f"Região deletada: Início {self.selected_region['start']}, Fim {self.selected_region['end']}")
+            self.selected_region = None
+            self.draw_timeline()
+            self.update_regions_listbox()
+
+    def start_resizing(self, event):
+        if not event.state & 0x0001:  # Verifica se a tecla Shift está pressionada
+            return
+        item = self.timeline_canvas.find_withtag('current')[0]
+        region_edge = self.region_items.get(item)
+        if region_edge:
+            region, edge = region_edge
+            self.resizing_region = region
+            self.resizing_edge = edge
+            # Vincular eventos de movimento do mouse e liberação do botão
+            self.timeline_canvas.bind('<Motion>', self.on_resizing)
+            self.timeline_canvas.bind('<ButtonRelease-3>', self.stop_resizing)
+
+    def on_resizing(self, event):
+        x = self.timeline_canvas.canvasx(event.x)
+        total_timeline_width = float(self.timeline_canvas.cget('scrollregion').split()[2])
+        frame = int((x / total_timeline_width) * self.total_frames)
+        frame = max(0, min(frame, self.total_frames - 1))
+
+        if self.resizing_edge == 'start':
+            if frame < self.resizing_region['end']:
+                self.resizing_region['start'] = frame
+        elif self.resizing_edge == 'end':
+            if frame > self.resizing_region['start']:
+                self.resizing_region['end'] = frame
+
+        self.draw_timeline()
+        self.update_regions_listbox()
+
+    def stop_resizing(self, event):
+        # Desvincular os eventos de redimensionamento
+        self.timeline_canvas.unbind('<Motion>')
+        self.timeline_canvas.unbind('<ButtonRelease-3>')
+        self.resizing_region = None
+        self.resizing_edge = None
+
+    # Métodos para o Listbox de regiões
+
+    def update_regions_listbox(self):
+        # Limpar a listbox
+        self.regions_listbox.delete(0, tk.END)
+        # Adicionar as regiões
+        for idx, region in enumerate(self.labels):
+            start_time = region['start'] / self.fps
+            end_time = region['end'] / self.fps
+            item_text = f"{idx+1}. {region['label']} ({start_time:.2f}s - {end_time:.2f}s)"
+            self.regions_listbox.insert(tk.END, item_text)
+        self.highlight_region_in_listbox()
+
+    def on_regions_listbox_select(self, event):
+        selection = self.regions_listbox.curselection()
+        if selection:
+            index = selection[0]
+            self.selected_region = self.labels[index]
+            print(f"Região selecionada da lista: Início {self.selected_region['start']}, Fim {self.selected_region['end']}, Label '{self.selected_region['label']}'")
+            self.draw_timeline()
+            self.highlight_region_in_listbox()
+
+    def highlight_region_in_listbox(self):
+        self.regions_listbox.selection_clear(0, tk.END)
+        if self.selected_region and self.selected_region in self.labels:
+            index = self.labels.index(self.selected_region)
+            self.regions_listbox.selection_set(index)
+            self.regions_listbox.see(index)
 
 if __name__ == "__main__":
     app = VideoLabeler()
