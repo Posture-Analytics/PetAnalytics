@@ -97,9 +97,9 @@ class VideoLabeler(tk.Tk):
         tk.Button(controls_frame, text="Modo Frame a Frame", command=self.toggle_frame_by_frame_mode).pack(side='left')
 
         # Botões de frame-by-frame
-        self.prev_frame_button = tk.Button(controls_frame, text="<< Frame Anterior", command=self.prev_frame)
+        self.prev_frame_button = tk.Button(controls_frame, text="<< Frame Anterior", command=None)
         self.prev_frame_button.pack(side='left')
-        self.next_frame_button = tk.Button(controls_frame, text="Próximo Frame >>", command=self.next_frame)
+        self.next_frame_button = tk.Button(controls_frame, text="Próximo Frame >>", command=None)
         self.next_frame_button.pack(side='left')
 
         # Inicialmente desabilitados
@@ -277,7 +277,6 @@ class VideoLabeler(tk.Tk):
             self.video_label.configure(image=imgtk)
 
     def next_frame(self, event=None):
-        print(self.current_frame_index)
         if self.current_frame_index < self.total_frames - 1:
             self.current_frame_index += 1
             self.display_current_frame()
@@ -299,7 +298,6 @@ class VideoLabeler(tk.Tk):
         self.holding_next = False
 
     def hold_next_frame(self):
-        print("blaaa")
         if self.holding_next:
             self.next_frame()
             self.update_idletasks()  # Forçar atualização da interface
