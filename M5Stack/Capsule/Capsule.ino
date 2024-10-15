@@ -34,10 +34,6 @@ void setup() {
     // Inicializa M5 Capsule
     M5.begin();
 
-    M5.Imu.setAccelODR(110); // Configura a taxa de amostragem do acelerômetro para 100 Hz
-    M5.Imu.setGyroODR(110);  // Configura a taxa de amostragem do giroscópio para 100 Hz
-
-
     // Conectando ao Wi-Fi
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
     while (WiFi.status() != WL_CONNECTED) {
@@ -108,7 +104,7 @@ void collectIMUData(void * parameter) {
             xSemaphoreGive(xSemaphore);
             lastTimestamp = millis();
         }
-        vTaskDelay(1);
+        vTaskDelay(6);
     }
 }
 
