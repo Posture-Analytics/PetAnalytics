@@ -3,10 +3,14 @@
 This repository contains multiple hardware and software projects, all part of the PetAnalytics project. Each subproject serves a unique purpose, ranging from IoT devices to video annotation software.
 
 ## 1. [Sparkfun Projects](./Sparkfun)
-This project focuses on developing an IoT device to collect data on animal behavior using an ESP32 and SparkFun IMU sensors.
+This project focuses on developing an IoT device to collect data on animal behavior using an **[ESP32 SparkFun Thing Plus](https://www.sparkfun.com/products/15663)** and **[SparkFun 9DoF IMU Breakout - ICM-20948](https://www.sparkfun.com/products/15335)** sensors.
 
-- **Main components**: ESP32, SparkFun IMU.
-- **Features**: Data logging on an SD card, motion data collection from IMUs.
+- **Features**: 
+  - Real-time motion data collection from the IMUs.
+  - Data logging to an SD card.
+  - Configurable IMU sample rates for various tracking scenarios.
+  - Potential for integration with a local database on the SD card.
+  - Expandable system to support multiple IMUs simultaneously.
 
 ### Subprojects
 
@@ -16,6 +20,12 @@ This project focuses on developing an IoT device to collect data on animal behav
 
 ## 2. [M5Stack Projects](./M5Stack)
 Projects utilizing various M5Stack hardware for data capture and monitoring. M5 devices are practical and modular, allowing easy integration with a variety of sensors.
+
+- **Features**:
+  - Modular design allowing rapid prototyping.
+  - Integration with Firebase for real-time data storage
+  - Support for SD card storage, allowing local data logging
+  - Compact and portable, ideal for field data collection.
 
 ### Subprojects
 
@@ -27,7 +37,12 @@ Projects utilizing various M5Stack hardware for data capture and monitoring. M5 
 This software is designed for video annotation and labeling, specifically to label animal behavior. It provides a graphical interface for video manipulation, including playback at different speeds and frame-by-frame labeling.
 
 - **Technologies used**: Python, Tkinter.
-- **Features**: Synchronization with sensors *(To-Do)*, behavior annotation in video.
+- **Features**: 
+  - Frame-by-frame video labeling.
+  - Flexible playback speeds (0.25x, 1x, 2x).
+  - Keyboard shortcuts for applying labels.
+  - Export of labeled data to CSV format.
+  - Synchronization with sensor data (IMU readings) *(To-Do)*.
 
 ## Acknowledgements
 
