@@ -43,9 +43,43 @@ desktop.ini
 *.exe
 *.log
 
-# Configuration file
-**/config.h
-M5Stack/firebase/config.h
+# Python specific
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pdb
+*.egg
+*.egg-info/
+dist/
+build/
+*.so
+*.log
+*.mypy_cache/
+*.coverage
+.coverage.*
+.hypothesis/
+*.pytest_cache/
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.vscode/
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Jupyter notebooks
+.ipynb_checkpoints
+
+# VS Code settings
+.vscode/
 
 #venv
 /venv
+
+# Configuration file
+**/config.h
