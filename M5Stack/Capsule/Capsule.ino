@@ -65,15 +65,35 @@ void setup() {
 
 void collectIMUData(void * parameter) {
     float ax, ay, az; // Variáveis para acelerômetro
+    float gx, gy, gz; // Variáveis para giroscópio
     unsigned long lastTimestamp = 0;
 
     while (true) {
         // Coleta e envia os dados do IMU, se ativo
+
+        if (M5.BtnA.wasPressed()) {
+            imuActive = !imuActive; // toggle IMU state
+            if (imuActive) {
+                Serial.println("IMU activated");
+            } else {
+                Serial.println("IMU deactivated");
+            }
+
+            while(M5.BtnA.isPressed()) {
+                M5.update();
+                delay(10);
+            }
+        }
+
+        // update button state
+        M5.update();
+
         if (imuActive) {
             // Atualiza os dados do IMU
             if (M5.Imu.update()) {
                 // Obtém os dados do acelerômetro
                 M5.Imu.getAccelData(&ax, &ay, &az);
+                M5.Imu.getGyroData(&gx, &gy, &gz);
 
                 // Protege os recursos compartilhados com o semáforo
                 xSemaphoreTake(xSemaphore, portMAX_DELAY);
@@ -83,6 +103,9 @@ void collectIMUData(void * parameter) {
                     jsonEntry.set("aX", ax);
                     jsonEntry.set("aY", ay);
                     jsonEntry.set("aZ", az);
+                    jsonEntry.set("gX", gx);
+                    jsonEntry.set("gY", gy);
+                    jsonEntry.set("gZ", gz);
                     activeJsonData->add(String(imuReadingsCount), jsonEntry);
 
                     imuReadingsCount++;
@@ -121,11 +144,16 @@ void sendDataToFirebase(void * parameter) {
 
             xSemaphoreGive(xSemaphore);
 
-            if (Firebase.pushJSON(firebaseData, "/IMUData", *sendingJsonData)) {
-                Serial.println("Dados enviados ao Firebase!");
-                sendingJsonData->clear();
+            if (sendingJsonData != nullptr) {
+              Serial.println("Enviando dados ao Firebase...");
+              if (Firebase.pushJSON(firebaseData, "/IMUData", *sendingJsonData)) {
+                  Serial.println("Dados enviados ao Firebase!");
+                  sendingJsonData->clear();
+              } else {
+                  Serial.println("Erro ao enviar dados: " + firebaseData.errorReason());
+              }
             } else {
-                Serial.println("Erro ao enviar dados: " + firebaseData.errorReason());
+                Serial.println("Erro: sendingJsonData é null");
             }
         } else {
             xSemaphoreGive(xSemaphore);
