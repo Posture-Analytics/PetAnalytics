@@ -40,7 +40,9 @@ void setup() {
         delay(500);
         Serial.print(".");
     }
+
     Serial.println("Conectado ao Wi-Fi!");
+
     timeClient.begin();
 
     // Configuração do Firebase
@@ -56,15 +58,29 @@ void setup() {
 
     // Cria as tarefas
     xTaskCreatePinnedToCore(
-        collectIMUData, "Task1", 10000, NULL, 1, &Task1, 0);
+        collectIMUData,   // Task function
+        "Task1",          // Task name
+        10000,            // Stack size
+        NULL,             // Task input parameter
+        1,                // Priority of the task
+        &Task1,           // Task handle
+        0);               // Core 0
+
     xTaskCreatePinnedToCore(
-        sendDataToFirebase, "Task2", 10000, NULL, 2, &Task2, 1);
+        sendDataToFirebase,  // Task function
+        "Task2",             // Task name
+        10000,               // Stack size
+        NULL,                // Task input parameter
+        2,                   // Priority of the task
+        &Task2,              // Task handle
+        1);                  // Core 1
 
     Serial.println("Configuração concluída");
 }
 
 void collectIMUData(void * parameter) {
     float ax, ay, az; // Variáveis para acelerômetro
+    float gx, gy, gz; // Variáveis para acelerômetro
     unsigned long lastTimestamp = 0;
 
     while (true) {
@@ -74,6 +90,7 @@ void collectIMUData(void * parameter) {
             if (M5.Imu.update()) {
                 // Obtém os dados do acelerômetro
                 M5.Imu.getAccelData(&ax, &ay, &az);
+                M5.Imu.getGyroData(&gx, &gy, &gz);
 
                 // Protege os recursos compartilhados com o semáforo
                 xSemaphoreTake(xSemaphore, portMAX_DELAY);
@@ -83,6 +100,9 @@ void collectIMUData(void * parameter) {
                     jsonEntry.set("aX", ax);
                     jsonEntry.set("aY", ay);
                     jsonEntry.set("aZ", az);
+                    jsonEntry.set("gX", gx);
+                    jsonEntry.set("gY", gy);
+                    jsonEntry.set("gZ", gz);
                     activeJsonData->add(String(imuReadingsCount), jsonEntry);
 
                     imuReadingsCount++;
@@ -91,20 +111,20 @@ void collectIMUData(void * parameter) {
 
                 xSemaphoreGive(xSemaphore);
             }
+
+            // Atualiza o tempo a cada segundo
+            if (millis() - lastTimestamp >= 1000) {
+                timeClient.update();
+                xSemaphoreTake(xSemaphore, portMAX_DELAY);
+
+                activeJsonData->add(imuReadingsCount, timeClient.getFormattedTime());
+                imuReadingsCount++;
+
+                xSemaphoreGive(xSemaphore);
+                lastTimestamp = millis();
+            }
         }
-
-        // Atualiza o tempo a cada segundo
-        if (millis() - lastTimestamp >= 1000) {
-            timeClient.update();
-            xSemaphoreTake(xSemaphore, portMAX_DELAY);
-
-            activeJsonData->add(imuReadingsCount, timeClient.getFormattedTime());
-            imuReadingsCount++;
-
-            xSemaphoreGive(xSemaphore);
-            lastTimestamp = millis();
-        }
-        vTaskDelay(6);
+        vTaskDelay(5);
     }
 }
 
