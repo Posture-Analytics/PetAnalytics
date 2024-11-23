@@ -27,6 +27,14 @@ TaskHandle_t Task2;
 
 SemaphoreHandle_t xSemaphore;
 
+// Variável de controle para marcação do tempo
+volatile bool timeUpdated = false;
+unsigned long lastTimestamp = 0;
+
+void IRAM_ATTR onTimer() {
+    timeUpdated = true; // A cada interrupção de timer, marca que o tempo foi atualizado
+}
+
 void setup() {
     // Inicializa Serial
     Serial.begin(115200);
@@ -75,13 +83,23 @@ void setup() {
         &Task2,              // Task handle
         1);                  // Core 1
 
+    // Configura o timer para disparar a cada 1 segundo
+    timerConfig();
+
     Serial.println("Configuração concluída");
+}
+
+void timerConfig() {
+    // Configura um temporizador para disparar a interrupção a cada 1 segundo
+    timerBegin(0, 80, true);
+    timerAttachInterrupt(0, &onTimer, true); 
+    timerAlarmWrite(0, 1000000, true);
+    timerAlarmEnable(0); 
 }
 
 void collectIMUData(void * parameter) {
     float ax, ay, az; // Variáveis para acelerômetro
     float gx, gy, gz; // Variáveis para acelerômetro
-    unsigned long lastTimestamp = 0;
 
     while (true) {
         // Coleta e envia os dados do IMU, se ativo
@@ -108,28 +126,27 @@ void collectIMUData(void * parameter) {
                     imuReadingsCount++;
                     Serial.println(imuReadingsCount);
                 }
-
                 xSemaphoreGive(xSemaphore);
-            }
-
-            // Atualiza o tempo a cada segundo
-            if (millis() - lastTimestamp >= 1000) {
-                timeClient.update();
-                xSemaphoreTake(xSemaphore, portMAX_DELAY);
-
-                activeJsonData->add(imuReadingsCount, timeClient.getFormattedTime());
-                imuReadingsCount++;
-
-                xSemaphoreGive(xSemaphore);
-                lastTimestamp = millis();
             }
         }
-        vTaskDelay(5);
+    vTaskDelay(5);
     }
 }
 
+
 void sendDataToFirebase(void * parameter) {
     while (true) {
+
+        if (WiFi.status() != WL_CONNECTED) {
+            Serial.println("Wi-Fi desconectado! Tentando reconectar...");
+            WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+            while (WiFi.status() != WL_CONNECTED) {
+                delay(200);
+                Serial.print(".");
+            }
+            Serial.println("\nReconectado ao Wi-Fi!");
+        }
+
         xSemaphoreTake(xSemaphore, portMAX_DELAY);
 
         if (imuReadingsCount >= readingsThreshold) {
@@ -143,10 +160,10 @@ void sendDataToFirebase(void * parameter) {
 
             if (Firebase.pushJSON(firebaseData, "/IMUData", *sendingJsonData)) {
                 Serial.println("Dados enviados ao Firebase!");
-                sendingJsonData->clear();
             } else {
                 Serial.println("Erro ao enviar dados: " + firebaseData.errorReason());
             }
+            sendingJsonData->clear();
         } else {
             xSemaphoreGive(xSemaphore);
         }
@@ -156,5 +173,14 @@ void sendDataToFirebase(void * parameter) {
 }
 
 void loop() {
-    // Loop vazio, tarefas são gerenciadas pelo FreeRTOS
+        // Loop principal
+    if (timeUpdated) {
+        timeUpdated = false; // Reseta o flag
+
+        // Atualiza o tempo a cada segundo
+        timeClient.update();
+
+        activeJsonData->add("timestamp", timeClient.getFormattedTime());
+    }
+    vTaskDelay(1);
 }
