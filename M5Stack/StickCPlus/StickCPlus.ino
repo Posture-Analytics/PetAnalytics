@@ -39,13 +39,25 @@ void setup() {
     auto cfg = M5.config();
     StickCP2.begin(cfg);
 
+    StickCP2.Display.setTextSize(2);
+    StickCP2.Display.setRotation(3);
+    StickCP2.Display.setCursor(10, 20);
+    StickCP2.Display.printf("Power on!");
+
+    delay(500);
+
     // connect to Wi-Fi
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
     while (WiFi.status() != WL_CONNECTED) {
         delay(500);
         Serial.print(".");
     }
+
+    StickCP2.Display.clear();
+    StickCP2.Display.setCursor(10, 20);
+    StickCP2.Display.printf("Connected to Wi-Fi!");
     Serial.println("Connected to Wi-Fi!");
+
     timeClient.begin();
 
     // configure Firebase
@@ -79,10 +91,18 @@ void setup() {
         1);                  // Core 1
 
     Serial.println("Configuration completed");
+
+    StickCP2.Display.clear();
+    StickCP2.Display.setCursor(10, 20);
+    StickCP2.Display.printf("IMU activated");
 }
 
 void collectIMUData(void * parameter) {
-    unsigned long lastTimestamp = 0;
+    unsigned long lastTimestamp = millis();
+
+    //update real time
+    timeClient.update();
+    String current_time = timeClient.getFormattedTime();
 
     while (true) {
         // check if button A was pressed
@@ -90,6 +110,14 @@ void collectIMUData(void * parameter) {
             imuActive = !imuActive; // toggle IMU state
             if (imuActive) {
                 Serial.println("IMU activated");
+
+                StickCP2.Display.clear();
+                StickCP2.Display.setCursor(10, 20);
+                StickCP2.Display.printf("IMU activated");
+
+                //update real time
+                timeClient.update();
+                current_time = timeClient.getFormattedTime();
             } else {
                 Serial.println("IMU deactivated");
 
@@ -102,25 +130,6 @@ void collectIMUData(void * parameter) {
                 StickCP2.update();
                 delay(10);
             }
-        }
-
-        // check if button B was pressed
-        if (StickCP2.BtnB.wasPressed()) {
-            StickCP2.Display.clear();
-            StickCP2.Display.setCursor(10, 20);
-
-            // clear the /IMUData node (for test only)
-            if (Firebase.deleteNode(firebaseData, "/IMUData")) {
-                Serial.println("Node /IMUData cleared successfully!");
-                StickCP2.Display.printf("Node /IMUData cleared successfully!");
-            } else {
-                Serial.println("Error clearing node /IMUData: " + firebaseData.errorReason());
-                StickCP2.Display.printf("Error clearing node /IMUData");
-            }
-
-            delay(200);
-            StickCP2.Display.clear();
-            Serial.println("IMU activated");
         }
 
         // update button state
@@ -139,37 +148,30 @@ void collectIMUData(void * parameter) {
                   auto data = StickCP2.Imu.getImuData();
 
                 if (activeJsonData != nullptr) {
-                    // store readings in active JSON
-                    FirebaseJson jsonEntry;
-                    jsonEntry.set("aX", data.accel.x);
-                    jsonEntry.set("aY", data.accel.y);
-                    jsonEntry.set("aZ", data.accel.z);
-                    jsonEntry.set("gX", data.gyro.x);
-                    jsonEntry.set("gY", data.gyro.y);
-                    jsonEntry.set("gZ", data.gyro.z);
-                    activeJsonData->add(String(imuReadingsCount), jsonEntry);
+                  // store readings in active JSON
+                  FirebaseJson jsonEntry;
+                  jsonEntry.set("aX", data.accel.x);
+                  jsonEntry.set("aY", data.accel.y);
+                  jsonEntry.set("aZ", data.accel.z);
+                  jsonEntry.set("gX", data.gyro.x);
+                  jsonEntry.set("gY", data.gyro.y);
+                  jsonEntry.set("gZ", data.gyro.z);
+                  activeJsonData->set(String(current_time) + "/" + String(imuReadingsCount), jsonEntry);
 
-                    imuReadingsCount++;
-                    Serial.println(imuReadingsCount);
-                    }
-                  
-                  xSemaphoreGive(xSemaphore);
-                }
+                  imuReadingsCount++;
+                  Serial.println(imuReadingsCount);
+                  }
+              }
+              xSemaphoreGive(xSemaphore);
             }
 
             // check if 1 second has passed since the last marker addition
             if (millis() - lastTimestamp >= 1000) {
-                timeClient.update();
-                // Protect shared resources with semaphore
-                xSemaphoreTake(xSemaphore, portMAX_DELAY);
-
-                activeJsonData->add(imuReadingsCount, timeClient.getFormattedTime());
-
-                imuReadingsCount++;
-
-                xSemaphoreGive(xSemaphore);
-
                 lastTimestamp = millis(); // update last marker time
+
+                //update real time
+                timeClient.update();
+                current_time = timeClient.getFormattedTime();
             }
         }
         vTaskDelay(1);
@@ -192,6 +194,13 @@ void sendDataToFirebase(void * parameter) {
 
             xSemaphoreGive(xSemaphore); // Release the semaphore before sending data
 
+            while (WiFi.status() != WL_CONNECTED) {
+                StickCP2.Display.clear();
+                StickCP2.Display.setCursor(10, 20);
+                StickCP2.Display.printf("IMU activated");
+                delay(500);
+            }
+
             // Send the data from the sending buffer
             if (sendingJsonData != nullptr) {
                 Serial.println("Sending data to Firebase...");
@@ -200,6 +209,7 @@ void sendDataToFirebase(void * parameter) {
                     sendingJsonData->clear(); // Clear the sending buffer after sending
                 } else {
                     Serial.println("Error sending data: " + firebaseData.errorReason());
+                    sendingJsonData->clear(); // Clear the sending buffer
                 }
             } else {
                 Serial.println("Error: sendingJsonData is null");
