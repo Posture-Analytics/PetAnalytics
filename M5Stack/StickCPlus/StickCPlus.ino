@@ -10,13 +10,12 @@ FirebaseAuth auth;
 FirebaseData firebaseData;
 
 bool imuActive = true; // variable to control the state of the IMU
-int imuReadingsCount = 1; // IMU readings counter
-const int readingsThreshold = 80; // number of readings before sending to Firebase
+int imuReadingsCount = 0; // IMU readings counter
+const int readingsThreshold = 79; // number of readings before sending to Firebase
 
-// Initialize NTPClient with the specified NTP server ("pool.ntp.org"), brazil offset (-10800), 
-// and a 60-second update interval (60000 ms) using the provided WiFiUDP object (ntpUDP) for UDP communication.
+// Initialize NTPClient with the specified NTP server ("pool.ntp.org"), brazil offset (-10800) 
 WiFiUDP ntpUDP;
-NTPClient timeClient(ntpUDP, "pool.ntp.org", -10800, 600);
+NTPClient timeClient(ntpUDP, "pool.ntp.org", -10800, 60000);
 
 // Double buffers for storing IMU readings
 FirebaseJson jsonData1;
@@ -30,6 +29,14 @@ TaskHandle_t Task1;
 TaskHandle_t Task2;
 
 SemaphoreHandle_t xSemaphore;
+
+//Interrupt
+hw_timer_t *timer = NULL;
+volatile bool timerFlag = true;
+
+void IRAM_ATTR onTimer() {
+    timerFlag = true;
+}
 
 void setup() {
     // initialize serial
@@ -58,7 +65,14 @@ void setup() {
     StickCP2.Display.printf("Connected to Wi-Fi!");
     Serial.println("Connected to Wi-Fi!");
 
+    // connect to NTP
     timeClient.begin();
+    timeClient.update();
+
+    // configure interrupt with internal clock
+    timer = timerBegin(1000000);
+    timerAttachInterrupt(timer, &onTimer); 
+    timerAlarm(timer, 1000000, true, 0);
 
     // configure Firebase
     config.api_key = DATABASE_API_KEY;
@@ -68,10 +82,10 @@ void setup() {
     Firebase.begin(&config, &auth);
     Firebase.reconnectWiFi(true);
 
-    // Create semaphore for variable synchronization
+    // create semaphore for variable synchronization
     xSemaphore = xSemaphoreCreateMutex();
 
-    // Create tasks
+    // create tasks
     xTaskCreatePinnedToCore(
         collectIMUData,   // Task function
         "Task1",          // Task name
@@ -98,11 +112,7 @@ void setup() {
 }
 
 void collectIMUData(void * parameter) {
-    unsigned long lastTimestamp = millis();
-
-    //update real time
-    timeClient.update();
-    String current_time = timeClient.getFormattedTime();
+    String current_time;
 
     while (true) {
         // check if button A was pressed
@@ -137,6 +147,17 @@ void collectIMUData(void * parameter) {
 
         // collect and send IMU data if active
         if (imuActive) {
+
+            // check the interrupt
+            if (timerFlag) {
+                // Atualizar e imprimir o horário
+                timeClient.update();
+                current_time = timeClient.getFormattedTime();
+                //Serial.println(current_time);
+                
+                timerFlag = false; // Reseta a flag
+            }
+
             auto imu_update = StickCP2.Imu.update();
 
             if (imu_update) {
@@ -145,33 +166,25 @@ void collectIMUData(void * parameter) {
                 xSemaphoreTake(xSemaphore, portMAX_DELAY);
 
                 if (imuReadingsCount < readingsThreshold){
-                  auto data = StickCP2.Imu.getImuData();
+                    imuReadingsCount++;
+                    xSemaphoreGive(xSemaphore);
 
-                if (activeJsonData != nullptr) {
-                  // store readings in active JSON
-                  FirebaseJson jsonEntry;
-                  jsonEntry.set("aX", data.accel.x);
-                  jsonEntry.set("aY", data.accel.y);
-                  jsonEntry.set("aZ", data.accel.z);
-                  jsonEntry.set("gX", data.gyro.x);
-                  jsonEntry.set("gY", data.gyro.y);
-                  jsonEntry.set("gZ", data.gyro.z);
-                  activeJsonData->set(String(current_time) + "/" + String(imuReadingsCount), jsonEntry);
+                    auto data = StickCP2.Imu.getImuData();
 
-                  imuReadingsCount++;
-                  Serial.println(imuReadingsCount);
-                  }
-              }
-              xSemaphoreGive(xSemaphore);
-            }
+                    // store readings in active JSON
+                    FirebaseJson jsonEntry;
+                    jsonEntry.set("aX", data.accel.x);
+                    jsonEntry.set("aY", data.accel.y);
+                    jsonEntry.set("aZ", data.accel.z);
+                    jsonEntry.set("gX", data.gyro.x);
+                    jsonEntry.set("gY", data.gyro.y);
+                    jsonEntry.set("gZ", data.gyro.z);
+                    activeJsonData->set(current_time + "/" + String(imuReadingsCount), jsonEntry);
 
-            // check if 1 second has passed since the last marker addition
-            if (millis() - lastTimestamp >= 1000) {
-                lastTimestamp = millis(); // update last marker time
-
-                //update real time
-                timeClient.update();
-                current_time = timeClient.getFormattedTime();
+                    //Serial.println(imuReadingsCount);
+                } else {
+                    xSemaphoreGive(xSemaphore);
+                }
             }
         }
         vTaskDelay(1);
@@ -223,5 +236,5 @@ void sendDataToFirebase(void * parameter) {
 }
 
 void loop() {
-    // Empty loop since tasks are managed by FreeRTOS
+
 }
