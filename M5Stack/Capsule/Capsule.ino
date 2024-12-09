@@ -11,7 +11,8 @@ FirebaseData firebaseData;
 
 bool imuActive = true; // Variable to control the state of the IMU
 int imuReadingsCount = 0; // IMU readings counter
-const int readingsThreshold = 79; // Number of readings before sending to Firebase
+int ram_size = esp_get_free_heap_size();
+const int readingsThreshold = max(ram_size / 2800, 79); // Number of readings before sending to Firebase
 
 // Initialize NTPClient with the specified NTP server ("pool.ntp.org"), brazil offset (-10800) 
 WiFiUDP ntpUDP;
@@ -136,7 +137,7 @@ void collectIMUData(void * parameter) {
                 // update the time
                 timeClient.update();
                 current_time = timeClient.getFormattedTime();
-                //Serial.println(current_time);
+                Serial.println(current_time);
                 
                 timerFlag = false; // reset the flag
             }
