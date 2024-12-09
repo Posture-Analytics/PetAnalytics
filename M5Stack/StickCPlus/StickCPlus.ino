@@ -1,4 +1,4 @@
-#include <M5StickCPlus2.h>
+#include <M5Unified.h>
 #include <WiFi.h>
 #include <WiFiUdp.h>
 #include <NTPClient.h>
@@ -9,9 +9,9 @@ FirebaseConfig config;
 FirebaseAuth auth;
 FirebaseData firebaseData;
 
-bool imuActive = true; // variable to control the state of the IMU
+bool imuActive = true; // Variable to control the state of the IMU
 int imuReadingsCount = 0; // IMU readings counter
-const int readingsThreshold = 79; // number of readings before sending to Firebase
+const int readingsThreshold = 79; // Number of readings before sending to Firebase
 
 // Initialize NTPClient with the specified NTP server ("pool.ntp.org"), brazil offset (-10800) 
 WiFiUDP ntpUDP;
@@ -43,15 +43,7 @@ void setup() {
     Serial.begin(115200);
 
     // initialize device
-    auto cfg = M5.config();
-    StickCP2.begin(cfg);
-
-    StickCP2.Display.setTextSize(2);
-    StickCP2.Display.setRotation(3);
-    StickCP2.Display.setCursor(10, 20);
-    StickCP2.Display.printf("Power on!");
-
-    delay(500);
+    M5.begin();
 
     // connect to Wi-Fi
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
@@ -59,12 +51,8 @@ void setup() {
         delay(500);
         Serial.print(".");
     }
-
-    StickCP2.Display.clear();
-    StickCP2.Display.setCursor(10, 20);
-    StickCP2.Display.printf("Connected to Wi-Fi!");
     Serial.println("Connected to Wi-Fi!");
-
+    
     // connect to NTP
     timeClient.begin();
     timeClient.update();
@@ -80,16 +68,21 @@ void setup() {
     auth.user.email = DATABASE_USER_EMAIL;
     auth.user.password = DATABASE_USER_PASSWORD;
     Firebase.begin(&config, &auth);
+    while(!Firebase.ready()){
+        Serial.println("Error: Firebase is not ready");
+        delay(1000); // Keep the ESP32 in wait for debugging
+        Firebase.begin(&config, &auth);
+    }
     Firebase.reconnectWiFi(true);
 
     // create semaphore for variable synchronization
     xSemaphore = xSemaphoreCreateMutex();
 
-    // create tasks
+        // create tasks
     xTaskCreatePinnedToCore(
         collectIMUData,   // Task function
         "Task1",          // Task name
-        10000,            // Stack size
+        15000,            // Stack size
         NULL,             // Task input parameter
         1,                // Priority of the task
         &Task1,           // Task handle
@@ -98,87 +91,77 @@ void setup() {
     xTaskCreatePinnedToCore(
         sendDataToFirebase,  // Task function
         "Task2",             // Task name
-        10000,               // Stack size
+        15000,               // Stack size
         NULL,                // Task input parameter
         2,                   // Priority of the task
         &Task2,              // Task handle
         1);                  // Core 1
 
     Serial.println("Configuration completed");
-
-    StickCP2.Display.clear();
-    StickCP2.Display.setCursor(10, 20);
-    StickCP2.Display.printf("IMU activated");
 }
 
 void collectIMUData(void * parameter) {
+    float ax, ay, az; // accelerometer variables
+    float gx, gy, gz; // gyroscope variables
     String current_time;
 
     while (true) {
         // check if button A was pressed
-        if (StickCP2.BtnA.wasPressed()) {
+        if (M5.BtnA.wasPressed()) {
             imuActive = !imuActive; // toggle IMU state
             if (imuActive) {
                 Serial.println("IMU activated");
-
-                StickCP2.Display.clear();
-                StickCP2.Display.setCursor(10, 20);
-                StickCP2.Display.printf("IMU activated");
 
                 //update real time
                 timeClient.update();
                 current_time = timeClient.getFormattedTime();
             } else {
                 Serial.println("IMU deactivated");
-
-                StickCP2.Display.clear();
-                StickCP2.Display.setCursor(10, 20);
-                StickCP2.Display.printf("IMU deactivated");
             }
 
-            while(StickCP2.BtnA.isPressed()) {
-                StickCP2.update();
+            while(M5.BtnA.isPressed()) {
+                M5.update();
                 delay(10);
             }
         }
 
         // update button state
-        StickCP2.update();
+        M5.update();
 
         // collect and send IMU data if active
         if (imuActive) {
 
             // check the interrupt
             if (timerFlag) {
-                // Atualizar e imprimir o horário
+                // update the time
                 timeClient.update();
                 current_time = timeClient.getFormattedTime();
-                //Serial.println(current_time);
+                Serial.println(current_time);
                 
-                timerFlag = false; // Reseta a flag
+                timerFlag = false; // reset the flag
             }
 
-            auto imu_update = StickCP2.Imu.update();
+            // update IMU data
+            if (M5.Imu.update()) {
+                // get accelerometer and gyroscope data
+                M5.Imu.getAccelData(&ax, &ay, &az);
+                M5.Imu.getGyroData(&gx, &gy, &gz);
 
-            if (imu_update) {
-
-                // Protect shared resources with semaphore
+                // protect shared resources with semaphore
                 xSemaphoreTake(xSemaphore, portMAX_DELAY);
 
                 if (imuReadingsCount < readingsThreshold){
                     imuReadingsCount++;
                     xSemaphoreGive(xSemaphore);
 
-                    auto data = StickCP2.Imu.getImuData();
-
                     // store readings in active JSON
                     FirebaseJson jsonEntry;
-                    jsonEntry.set("aX", data.accel.x);
-                    jsonEntry.set("aY", data.accel.y);
-                    jsonEntry.set("aZ", data.accel.z);
-                    jsonEntry.set("gX", data.gyro.x);
-                    jsonEntry.set("gY", data.gyro.y);
-                    jsonEntry.set("gZ", data.gyro.z);
+                    jsonEntry.set("aX", ax);
+                    jsonEntry.set("aY", ay);
+                    jsonEntry.set("aZ", az);
+                    jsonEntry.set("gX", gx);
+                    jsonEntry.set("gY", gy);
+                    jsonEntry.set("gZ", gz);
                     activeJsonData->set(current_time + "/" + String(imuReadingsCount), jsonEntry);
 
                     //Serial.println(imuReadingsCount);
@@ -186,63 +169,49 @@ void collectIMUData(void * parameter) {
                     xSemaphoreGive(xSemaphore);
                 }
             }
-        }
+        } 
         vTaskDelay(1);
     }
 }
 
 void sendDataToFirebase(void * parameter) {
     while (true) {
-        // Protect shared resources with semaphore
+        // protect shared resources with semaphore
         xSemaphoreTake(xSemaphore, portMAX_DELAY);
 
         // check if the number of readings to send to Firebase has been reached
         if (imuReadingsCount >= readingsThreshold) {
-            // Swap buffers
+            // swap buffers
             FirebaseJson* temp = activeJsonData;
             activeJsonData = sendingJsonData;
             sendingJsonData = temp;
 
-            imuReadingsCount = 0; // Reset the count for the new active buffer
+            imuReadingsCount = 0; // reset the count for the new active buffer
 
-            xSemaphoreGive(xSemaphore); // Release the semaphore before sending data
+            xSemaphoreGive(xSemaphore);
 
-            while (WiFi.status() != WL_CONNECTED) {
-                StickCP2.Display.clear();
-                StickCP2.Display.setCursor(10, 20);
-                StickCP2.Display.printf("IMU activated");
-                StickCP2.Display.setCursor(10, 50);
-                StickCP2.Display.printf("Wifi not connected");
-                delay(500);
-            }
-
-            if (WiFi.status() == WL_CONNECTED) {
-                StickCP2.Display.clear();
-                StickCP2.Display.setCursor(10, 20);
-                StickCP2.Display.printf("IMU activated");
-            }
-
-            // Send the data from the sending buffer
             if (sendingJsonData != nullptr) {
-                Serial.println("Sending data to Firebase...");
+                //Serial.println("Sending data to Firebase...");
                 if (Firebase.pushJSON(firebaseData, "/IMUData", *sendingJsonData)) {
                     Serial.println("Data sent successfully!");
-                    sendingJsonData->clear(); // Clear the sending buffer after sending
+                    sendingJsonData->clear();
                 } else {
-                    Serial.println("Error sending data: " + firebaseData.errorReason());
-                    sendingJsonData->clear(); // Clear the sending buffer
-                }
+                    Serial.println("Erro ao enviar dados: " + firebaseData.errorReason());
+                    sendingJsonData->clear(); // clear the sending buffer
+                } 
             } else {
                 Serial.println("Error: sendingJsonData is null");
             }
+              
         } else {
-            xSemaphoreGive(xSemaphore); // Release the semaphore if the number of readings is not reached
+            xSemaphoreGive(xSemaphore);
         }
-
+    
         vTaskDelay(1);
     }
 }
 
-void loop() {
 
+void loop() {
+    // Loop vazio, tarefas são gerenciadas pelo FreeRTOS
 }
