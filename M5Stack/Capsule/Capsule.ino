@@ -3,22 +3,25 @@
 #include <WiFiUdp.h>
 #include <NTPClient.h>
 #include <FirebaseESP32.h>
-#include "config.h" // Arquivo config.h
+#include "config.h" // change this file to your own config.h
 
 FirebaseConfig config;
 FirebaseAuth auth;
 FirebaseData firebaseData;
 
-bool imuActive = true; // variável para controlar o estado do IMU
-int imuReadingsCount = 1; // contador de leituras do IMU
-const int readingsThreshold = 100; // limite de leituras antes de enviar ao Firebase
+bool imuActive = true; // Variable to control the state of the IMU
+int imuReadingsCount = 0; // IMU readings counter
+const int readingsThreshold = 79; // Number of readings before sending to Firebase
 
+// Initialize NTPClient with the specified NTP server ("pool.ntp.org"), brazil offset (-10800) 
 WiFiUDP ntpUDP;
-NTPClient timeClient(ntpUDP, "pool.ntp.org", -10800, 600);
+NTPClient timeClient(ntpUDP, "pool.ntp.org", -10800, 60000);
 
+// Double buffers for storing IMU readings
 FirebaseJson jsonData1;
 FirebaseJson jsonData2;
 
+// Pointers to the active buffer and sending buffer
 FirebaseJson* activeJsonData = &jsonData1;
 FirebaseJson* sendingJsonData = &jsonData2;
 
@@ -27,48 +30,59 @@ TaskHandle_t Task2;
 
 SemaphoreHandle_t xSemaphore;
 
-// Variável de controle para marcação do tempo
-volatile bool timeUpdated = false;
-unsigned long lastTimestamp = 0;
+//Interrupt
+hw_timer_t *timer = NULL;
+volatile bool timerFlag = true;
 
 void IRAM_ATTR onTimer() {
-    timeUpdated = true; // A cada interrupção de timer, marca que o tempo foi atualizado
+    timerFlag = true;
 }
 
 void setup() {
-    // Inicializa Serial
+    // initialize serial
     Serial.begin(115200);
 
-    // Inicializa M5 Capsule
+    // initialize device
     M5.begin();
 
-    // Conectando ao Wi-Fi
+    // connect to Wi-Fi
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
     while (WiFi.status() != WL_CONNECTED) {
         delay(500);
         Serial.print(".");
     }
-
-    Serial.println("Conectado ao Wi-Fi!");
-
+    Serial.println("Connected to Wi-Fi!");
+    
+    // connect to NTP
     timeClient.begin();
+    timeClient.update();
 
-    // Configuração do Firebase
+    // configure interrupt with internal clock
+    timer = timerBegin(1000000);
+    timerAttachInterrupt(timer, &onTimer); 
+    timerAlarm(timer, 1000000, true, 0);
+
+    // configure Firebase
     config.api_key = DATABASE_API_KEY;
     config.database_url = DATABASE_URL;
     auth.user.email = DATABASE_USER_EMAIL;
     auth.user.password = DATABASE_USER_PASSWORD;
     Firebase.begin(&config, &auth);
+    while(!Firebase.ready()){
+        Serial.println("Error: Firebase is not ready");
+        delay(1000); // Keep the ESP32 in wait for debugging
+        Firebase.begin(&config, &auth);
+    }
     Firebase.reconnectWiFi(true);
 
-    // Cria o semáforo
+    // create semaphore for variable synchronization
     xSemaphore = xSemaphoreCreateMutex();
 
-    // Cria as tarefas
+        // create tasks
     xTaskCreatePinnedToCore(
         collectIMUData,   // Task function
         "Task1",          // Task name
-        10000,            // Stack size
+        15000,            // Stack size
         NULL,             // Task input parameter
         1,                // Priority of the task
         &Task1,           // Task handle
@@ -77,43 +91,70 @@ void setup() {
     xTaskCreatePinnedToCore(
         sendDataToFirebase,  // Task function
         "Task2",             // Task name
-        10000,               // Stack size
+        15000,               // Stack size
         NULL,                // Task input parameter
         2,                   // Priority of the task
         &Task2,              // Task handle
         1);                  // Core 1
 
-    // Configura o timer para disparar a cada 1 segundo
-    timerConfig();
-
-    Serial.println("Configuração concluída");
-}
-
-void timerConfig() {
-    // Configura um temporizador para disparar a interrupção a cada 1 segundo
-    timerBegin(0, 80, true);
-    timerAttachInterrupt(0, &onTimer, true); 
-    timerAlarmWrite(0, 1000000, true);
-    timerAlarmEnable(0); 
+    Serial.println("Configuration completed");
 }
 
 void collectIMUData(void * parameter) {
-    float ax, ay, az; // Variáveis para acelerômetro
-    float gx, gy, gz; // Variáveis para acelerômetro
+    float ax, ay, az; // accelerometer variables
+    float gx, gy, gz; // gyroscope variables
+    String current_time;
 
     while (true) {
-        // Coleta e envia os dados do IMU, se ativo
+        // check if button A was pressed
+        if (M5.BtnA.wasPressed()) {
+            imuActive = !imuActive; // toggle IMU state
+            if (imuActive) {
+                Serial.println("IMU activated");
+
+                //update real time
+                timeClient.update();
+                current_time = timeClient.getFormattedTime();
+            } else {
+                Serial.println("IMU deactivated");
+            }
+
+            while(M5.BtnA.isPressed()) {
+                M5.update();
+                delay(10);
+            }
+        }
+
+        // update button state
+        M5.update();
+
+        // collect and send IMU data if active
         if (imuActive) {
-            // Atualiza os dados do IMU
+
+            // check the interrupt
+            if (timerFlag) {
+                // update the time
+                timeClient.update();
+                current_time = timeClient.getFormattedTime();
+                //Serial.println(current_time);
+                
+                timerFlag = false; // reset the flag
+            }
+
+            // update IMU data
             if (M5.Imu.update()) {
-                // Obtém os dados do acelerômetro
+                // get accelerometer and gyroscope data
                 M5.Imu.getAccelData(&ax, &ay, &az);
                 M5.Imu.getGyroData(&gx, &gy, &gz);
 
-                // Protege os recursos compartilhados com o semáforo
+                // protect shared resources with semaphore
                 xSemaphoreTake(xSemaphore, portMAX_DELAY);
 
-                if (imuReadingsCount < readingsThreshold) {
+                if (imuReadingsCount < readingsThreshold){
+                    imuReadingsCount++;
+                    xSemaphoreGive(xSemaphore);
+
+                    // store readings in active JSON
                     FirebaseJson jsonEntry;
                     jsonEntry.set("aX", ax);
                     jsonEntry.set("aY", ay);
@@ -121,66 +162,56 @@ void collectIMUData(void * parameter) {
                     jsonEntry.set("gX", gx);
                     jsonEntry.set("gY", gy);
                     jsonEntry.set("gZ", gz);
-                    activeJsonData->add(String(imuReadingsCount), jsonEntry);
+                    activeJsonData->set(current_time + "/" + String(imuReadingsCount), jsonEntry);
 
-                    imuReadingsCount++;
-                    Serial.println(imuReadingsCount);
+                    //Serial.println(imuReadingsCount);
+                } else {
+                    xSemaphoreGive(xSemaphore);
                 }
-                xSemaphoreGive(xSemaphore);
             }
-        }
-    vTaskDelay(5);
-    }
-}
-
-
-void sendDataToFirebase(void * parameter) {
-    while (true) {
-
-        if (WiFi.status() != WL_CONNECTED) {
-            Serial.println("Wi-Fi desconectado! Tentando reconectar...");
-            WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-            while (WiFi.status() != WL_CONNECTED) {
-                delay(200);
-                Serial.print(".");
-            }
-            Serial.println("\nReconectado ao Wi-Fi!");
-        }
-
-        xSemaphoreTake(xSemaphore, portMAX_DELAY);
-
-        if (imuReadingsCount >= readingsThreshold) {
-            FirebaseJson* temp = activeJsonData;
-            activeJsonData = sendingJsonData;
-            sendingJsonData = temp;
-
-            imuReadingsCount = 1;
-
-            xSemaphoreGive(xSemaphore);
-
-            if (Firebase.pushJSON(firebaseData, "/IMUData", *sendingJsonData)) {
-                Serial.println("Dados enviados ao Firebase!");
-            } else {
-                Serial.println("Erro ao enviar dados: " + firebaseData.errorReason());
-            }
-            sendingJsonData->clear();
-        } else {
-            xSemaphoreGive(xSemaphore);
-        }
-
+        } 
         vTaskDelay(1);
     }
 }
 
-void loop() {
-        // Loop principal
-    if (timeUpdated) {
-        timeUpdated = false; // Reseta o flag
+void sendDataToFirebase(void * parameter) {
+    while (true) {
+        // protect shared resources with semaphore
+        xSemaphoreTake(xSemaphore, portMAX_DELAY);
 
-        // Atualiza o tempo a cada segundo
-        timeClient.update();
+        // check if the number of readings to send to Firebase has been reached
+        if (imuReadingsCount >= readingsThreshold) {
+            // swap buffers
+            FirebaseJson* temp = activeJsonData;
+            activeJsonData = sendingJsonData;
+            sendingJsonData = temp;
 
-        activeJsonData->add("timestamp", timeClient.getFormattedTime());
+            imuReadingsCount = 0; // reset the count for the new active buffer
+
+            xSemaphoreGive(xSemaphore);
+
+            if (sendingJsonData != nullptr) {
+                Serial.println("Sending data to Firebase...");
+                if (Firebase.pushJSON(firebaseData, "/IMUData", *sendingJsonData)) {
+                    Serial.println("Data sent successfully!");
+                    sendingJsonData->clear();
+                } else {
+                    Serial.println("Erro ao enviar dados: " + firebaseData.errorReason());
+                    sendingJsonData->clear(); // clear the sending buffer
+                } 
+            } else {
+                Serial.println("Error: sendingJsonData is null");
+            }
+              
+        } else {
+            xSemaphoreGive(xSemaphore);
+        }
+    
+        vTaskDelay(1);
     }
-    vTaskDelay(1);
+}
+
+
+void loop() {
+    // Loop vazio, tarefas são gerenciadas pelo FreeRTOS
 }
