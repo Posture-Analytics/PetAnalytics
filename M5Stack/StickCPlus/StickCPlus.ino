@@ -203,7 +203,7 @@ void sendDataToFirebase(void * parameter) {
             activeJsonData = sendingJsonData;
             sendingJsonData = temp;
 
-            imuReadingsCount = 1; // Reset the count for the new active buffer
+            imuReadingsCount = 0; // Reset the count for the new active buffer
 
             xSemaphoreGive(xSemaphore); // Release the semaphore before sending data
 
@@ -211,7 +211,15 @@ void sendDataToFirebase(void * parameter) {
                 StickCP2.Display.clear();
                 StickCP2.Display.setCursor(10, 20);
                 StickCP2.Display.printf("IMU activated");
+                StickCP2.Display.setCursor(10, 50);
+                StickCP2.Display.printf("Wifi not connected");
                 delay(500);
+            }
+
+            if (WiFi.status() == WL_CONNECTED) {
+                StickCP2.Display.clear();
+                StickCP2.Display.setCursor(10, 20);
+                StickCP2.Display.printf("IMU activated");
             }
 
             // Send the data from the sending buffer
