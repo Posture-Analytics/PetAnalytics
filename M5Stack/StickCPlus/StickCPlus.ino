@@ -1,7 +1,7 @@
 #include <M5Unified.h>
 #include <WiFi.h>
 #include <WiFiUdp.h>
-#include <NTPClient.h>
+#include <esp_sntp.h>
 #include <FirebaseESP32.h>
 #include "config.h" // change this file to your own config.h
 
@@ -9,14 +9,14 @@ FirebaseConfig config;
 FirebaseAuth auth;
 FirebaseData firebaseData;
 
+const char* ntpServer = "pool.ntp.org";
+const long gmtOffset_sec = -10800; // (GMT-3)
+const int daylightOffset_sec = 0; 
+
 bool imuActive = true; // Variable to control the state of the IMU
 int imuReadingsCount = 0; // IMU readings counter
 int ram_size = esp_get_free_heap_size();
 const int readingsThreshold = max(ram_size / 2800, 79); // Number of readings before sending to Firebase
-
-// Initialize NTPClient with the specified NTP server ("pool.ntp.org"), brazil offset (-10800) 
-WiFiUDP ntpUDP;
-NTPClient timeClient(ntpUDP, "pool.ntp.org", -10800, 60000);
 
 // Double buffers for storing IMU readings
 FirebaseJson jsonData1;
@@ -29,7 +29,9 @@ FirebaseJson* sendingJsonData = &jsonData2;
 TaskHandle_t Task1;
 TaskHandle_t Task2;
 
-SemaphoreHandle_t xSemaphore;
+SemaphoreHandle_t xCountSemaphore; // Semaphore to protect imuReadingsCount
+
+String current_time;
 
 //Interrupt
 hw_timer_t *timer = NULL;
@@ -37,6 +39,53 @@ volatile bool timerFlag = true;
 
 void IRAM_ATTR onTimer() {
     timerFlag = true;
+}
+
+void waitForNextSecond() {
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+
+    // Espera até que os milissegundos sejam próximos de 0
+    while (tv.tv_usec > 5000) {
+        gettimeofday(&tv, NULL);
+    }
+}
+
+// Function to print the current time with milliseconds
+void printFormattedTimeWithMillis() {
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+
+    // Converte para estrutura tm
+    struct tm* timeinfo = localtime(&tv.tv_sec);
+
+    // Obtém milissegundos
+    int milliseconds = tv.tv_usec / 1000;
+
+    // Formata e imprime a data e hora com milissegundos no serial
+    Serial.printf("Hora atual com milissegundos: %02d:%02d:%02d.%03d\n",
+                  timeinfo->tm_hour,
+                  timeinfo->tm_min,
+                  timeinfo->tm_sec,
+                  milliseconds);
+}
+
+// Function to print the current time without milliseconds
+String getFormattedTimeWithoutMillis() {
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+
+    // Convert to tm structure
+    struct tm* timeinfo = localtime(&tv.tv_sec);
+
+    // Format the time as a string
+    char buffer[9]; // Enough to hold "HH:MM:SS"
+    snprintf(buffer, sizeof(buffer), "%02d:%02d:%02d",
+             timeinfo->tm_hour,
+             timeinfo->tm_min,
+             timeinfo->tm_sec);
+
+    return String(buffer);
 }
 
 void setup() {
@@ -54,14 +103,21 @@ void setup() {
     }
     Serial.println("Connected to Wi-Fi!");
     
-    // connect to NTP
-    timeClient.begin();
-    timeClient.update();
+    // connect to SNTP
+    configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+
+    delay(500);
+
+    // wait for time synchronization
+    delay(30000);
+
+    waitForNextSecond();
 
     // configure interrupt with internal clock
     timer = timerBegin(1000000);
     timerAttachInterrupt(timer, &onTimer); 
     timerAlarm(timer, 1000000, true, 0);
+    Serial.println("Interrupção configurada!");
 
     // configure Firebase
     config.api_key = DATABASE_API_KEY;
@@ -77,17 +133,17 @@ void setup() {
     Firebase.reconnectWiFi(true);
 
     // create semaphore for variable synchronization
-    xSemaphore = xSemaphoreCreateMutex();
+    xCountSemaphore = xSemaphoreCreateMutex();
 
-        // create tasks
+    // create tasks
     xTaskCreatePinnedToCore(
-        collectIMUData,   // Task function
-        "Task1",          // Task name
-        15000,            // Stack size
-        NULL,             // Task input parameter
-        1,                // Priority of the task
-        &Task1,           // Task handle
-        0);               // Core 0
+        collectIMUData,     // Task function
+        "Task1",            // Task name
+        15000,              // Stack size
+        NULL,               // Task input parameter
+        1,                  // Priority of the task
+        &Task1,             // Task handle
+        0);                 // Core 0
 
     xTaskCreatePinnedToCore(
         sendDataToFirebase,  // Task function
@@ -104,18 +160,14 @@ void setup() {
 void collectIMUData(void * parameter) {
     float ax, ay, az; // accelerometer variables
     float gx, gy, gz; // gyroscope variables
-    String current_time;
 
     while (true) {
+
         // check if button A was pressed
         if (M5.BtnA.wasPressed()) {
             imuActive = !imuActive; // toggle IMU state
             if (imuActive) {
                 Serial.println("IMU activated");
-
-                //update real time
-                timeClient.update();
-                current_time = timeClient.getFormattedTime();
             } else {
                 Serial.println("IMU deactivated");
             }
@@ -129,19 +181,17 @@ void collectIMUData(void * parameter) {
         // update button state
         M5.update();
 
+        if (timerFlag) {
+            // update the time
+            timerFlag = false; // reset the flag
+
+            printFormattedTimeWithMillis();
+
+            current_time = getFormattedTimeWithoutMillis();
+        }
+
         // collect and send IMU data if active
         if (imuActive) {
-
-            // check the interrupt
-            if (timerFlag) {
-                // update the time
-                timeClient.update();
-                current_time = timeClient.getFormattedTime();
-                Serial.println(current_time);
-                
-                timerFlag = false; // reset the flag
-            }
-
             // update IMU data
             if (M5.Imu.update()) {
                 // get accelerometer and gyroscope data
@@ -149,11 +199,11 @@ void collectIMUData(void * parameter) {
                 M5.Imu.getGyroData(&gx, &gy, &gz);
 
                 // protect shared resources with semaphore
-                xSemaphoreTake(xSemaphore, portMAX_DELAY);
+                xSemaphoreTake(xCountSemaphore, portMAX_DELAY);
 
                 if (imuReadingsCount < readingsThreshold){
                     imuReadingsCount++;
-                    xSemaphoreGive(xSemaphore);
+                    xSemaphoreGive(xCountSemaphore);
 
                     // store readings in active JSON
                     FirebaseJson jsonEntry;
@@ -167,7 +217,7 @@ void collectIMUData(void * parameter) {
 
                     //Serial.println(imuReadingsCount);
                 } else {
-                    xSemaphoreGive(xSemaphore);
+                    xSemaphoreGive(xCountSemaphore);
                 }
             }
         } 
@@ -178,7 +228,7 @@ void collectIMUData(void * parameter) {
 void sendDataToFirebase(void * parameter) {
     while (true) {
         // protect shared resources with semaphore
-        xSemaphoreTake(xSemaphore, portMAX_DELAY);
+        xSemaphoreTake(xCountSemaphore, portMAX_DELAY);
 
         // check if the number of readings to send to Firebase has been reached
         if (imuReadingsCount >= readingsThreshold) {
@@ -189,7 +239,7 @@ void sendDataToFirebase(void * parameter) {
 
             imuReadingsCount = 0; // reset the count for the new active buffer
 
-            xSemaphoreGive(xSemaphore);
+            xSemaphoreGive(xCountSemaphore);
 
             if (sendingJsonData != nullptr) {
                 //Serial.println("Sending data to Firebase...");
@@ -205,14 +255,13 @@ void sendDataToFirebase(void * parameter) {
             }
               
         } else {
-            xSemaphoreGive(xSemaphore);
+            xSemaphoreGive(xCountSemaphore);
         }
     
         vTaskDelay(1);
     }
 }
 
+void loop(){
 
-void loop() {
-    // Loop vazio, tarefas são gerenciadas pelo FreeRTOS
 }
