@@ -88,6 +88,25 @@ String getFormattedTimeWithoutMillis() {
     return String(buffer);
 }
 
+bool isTimeCorrect() {
+    // Obtém o tempo atual do ESP32
+    time_t now = time(nullptr);
+
+    // Obtém o tempo da NTP
+    struct tm timeinfo;
+    if (getLocalTime(&timeinfo)) {
+        // Obtém o tempo NTP como time_t
+        time_t ntpTime = mktime(&timeinfo);
+
+        // Verifica se a diferença entre o tempo interno e o tempo NTP é aceitável
+        // Aqui estamos permitindo uma diferença de até 1 segundo (1000 ms)
+        if (abs(difftime(now, ntpTime)) < 1) {
+            return true;  // O tempo está sincronizado
+        }
+    }
+    return false;  // Não está sincronizado
+}
+
 void setup() {
     // initialize serial
     Serial.begin(115200);
@@ -106,10 +125,12 @@ void setup() {
     // connect to SNTP
     configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
 
-    delay(500);
-
     // wait for time synchronization
-    delay(30000);
+    while(!isTimeCorrect()){
+        delay(500);
+        Serial.print(".");
+    }
+    Serial.println("Tempo Correto!");
 
     waitForNextSecond();
 
