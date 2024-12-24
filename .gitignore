@@ -84,6 +84,8 @@ venv.bak/
 # Configuration file
 **/config.h
 
+# Local ignore
 delete_database.py
 *key.json
 dados_testes_horario.json
+old/
