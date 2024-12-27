@@ -40,6 +40,8 @@ def main(data_json_file, labels_json_file):  # Removidos cutoff_time e cutoff_fr
         df_expanded = pd.concat([df_expanded.drop(columns=['dados']), df_expanded['dados'].apply(pd.Series)], axis=1)
 
         df_final = merge_data_with_labels(df_expanded, label_data)
+        df_final = df_final.dropna(axis=1, how='all')
+        df_final = df_final.dropna(axis=0, how='any')
         df_final.to_csv('labeled_data.csv', index=False)
         print("Arquivo labeled_data.csv gerado com sucesso!")
 
@@ -47,6 +49,7 @@ def main(data_json_file, labels_json_file):  # Removidos cutoff_time e cutoff_fr
         print(f"Ocorreu um erro: {e}")
 
 if __name__ == "__main__":
-    DATA_JSON_FILE = "data.json"
-    LABELS_JSON_FILE = "labels.json"
+    FOLDER = "dog1"
+    DATA_JSON_FILE = f"data/{FOLDER}/data.json"
+    LABELS_JSON_FILE = f"data/{FOLDER}/labels.json"
     main(DATA_JSON_FILE, LABELS_JSON_FILE)  # Removidos os valores fixos

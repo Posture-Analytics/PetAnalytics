@@ -51,6 +51,3 @@ plt.tight_layout()
 
 # Save the plot
 plt.savefig('activity_distribution.png', format='png', bbox_inches='tight', dpi=300)
-
-# Show the plot
-plt.show()
