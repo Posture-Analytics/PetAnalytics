@@ -1,20 +1,20 @@
 import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
 from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import classification_report, accuracy_score
+from sklearn.metrics import classification_report, accuracy_score, confusion_matrix
 
 # Carregar os dados
 file_name = "labeled_data.csv"
 data = pd.read_csv(file_name)
-
-#data = data[~data["label"].isin(["Standing", "Eating"])]  # Remover as classes "Standing" e "Sitting"
 
 # Separar features e labels
 X = data[["aX", "aY", "aZ", "gX", "gY", "gZ"]]  # Seleciona apenas as colunas com os valores
 y = data["label"]
 
 # Dividir os dados em treino e teste
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=44)
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=44, stratify=y)
 
 # Definir os hiperparâmetros para validação cruzada
 param_grid = {
@@ -47,3 +47,14 @@ y_pred = best_rf.predict(X_test)
 # Exibir os resultados
 print("\nRelatório de Classificação:\n", classification_report(y_test, y_pred))
 print("Acurácia no conjunto de teste:", accuracy_score(y_test, y_pred))
+
+# Gerar a matriz de confusão
+conf_matrix = confusion_matrix(y_test, y_pred, normalize='true')
+
+# Plotar a matriz de confusão normalizada
+plt.figure(figsize=(8, 8))
+sns.heatmap(conf_matrix, annot=True, fmt=".2f", cmap="Blues", xticklabels=best_rf.classes_, yticklabels=best_rf.classes_)
+
+plt.xticks(rotation=20, ha='right')
+plt.yticks(rotation=20)
+plt.savefig("matriz_confusao_normalizada_rf.png", dpi=300)

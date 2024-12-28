@@ -15,7 +15,7 @@ activity_counts = data["label"].value_counts()
 activity_counts.to_csv('bla.csv', index=True)
 
 # Create figure
-plt.figure(figsize=(6, 6), dpi=300)
+plt.figure(figsize=(8, 8), dpi=300)
 
 # Create the main bar plot with a darker orange color
 bars = plt.bar(activity_counts.index, activity_counts.values,

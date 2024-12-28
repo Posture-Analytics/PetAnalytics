@@ -12,7 +12,7 @@ X = data[["aX", "aY", "aZ", "gX", "gY", "gZ"]]  # Seleciona apenas as colunas co
 y = data["label"]
 
 # Dividir os dados em treino e teste
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=44, stratify=y)
 
 # Definir os hiperparâmetros para validação cruzada
 param_grid = {
