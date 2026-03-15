@@ -40,6 +40,7 @@ def main(data_json_file, labels_json_file):  # Removidos cutoff_time e cutoff_fr
         df_expanded = pd.concat([df_expanded.drop(columns=['dados']), df_expanded['dados'].apply(pd.Series)], axis=1)
 
         df_final = merge_data_with_labels(df_expanded, label_data)
+        df_final = df_final.dropna(axis=1, how='all')
         df_final.to_csv('labeled_data.csv', index=False)
         print("Arquivo labeled_data.csv gerado com sucesso!")
 
