@@ -3,6 +3,10 @@
 #include <SPI.h>
 #include <SD.h>
 
+// ===========================================================================
+// Configurações e variáveis globais (IMU, áudio e SD Card)
+// ===========================================================================
+
 // ===== CONFIGURAÇÕES IMU EXTERNA =====
 #define IMU1_ADDR 0x68
 #define IMU2_ADDR 0x69
@@ -19,6 +23,9 @@ const int chipSelect = 11; // G11 -> CS
 const int mosiPin = 12;    // G12 -> MOSI
 const int clkPin = 14;     // G14 -> CLK
 const int misoPin = 39;    // G39 -> MISO
+
+// ===== CONFIGURAÇÕES RTC =====
+#define NTP_TIMEZONE  "UTC+3"
 
 // ===== ESTRUTURA DO CABEÇALHO WAV (44 BYTES) =====
 struct wav_header_t {
@@ -40,10 +47,16 @@ struct wav_header_t {
 // ===== ARQUIVOS E CONTROLE =====
 File imuFile;
 File audioFile;
+String audioFilename;
 uint32_t audioDataSize = 0;
 unsigned long frame_count = 0;
 bool sd_ready = false;
 bool recording = true;
+bool rtc_ready = false;
+
+// ===========================================================================
+// Funções auxiliares
+// ===========================================================================
 
 // Função para atualizar o header WAV no SD
 void updateWavHeader(File file, uint32_t dataSize) {
@@ -57,10 +70,48 @@ void updateWavHeader(File file, uint32_t dataSize) {
     file.write((uint8_t*)&header, sizeof(wav_header_t));
 }
 
+// Função para formatar data/hora do RTC
+String get_current_time() {
+    // Olha o tempo atual no RTC
+    auto dt = M5.Rtc.getDateTime();
+    
+    // Formata como string: YYYY-MM-DD_HH-MM-SS
+    char buffer[24]; // São 19 caractereses sempre. Com folga.
+    snprintf(
+        buffer, sizeof(buffer), "%04d-%02d-%02d_%02d-%02d-%02d",
+        dt.date.year, dt.date.month, dt.date.date,
+        dt.time.hours, dt.time.minutes, dt.time.seconds
+    );
+    String current_time = String(buffer);
+
+    return current_time;
+}
+
+// Gerar nome de arquivo com timestamp real do RTC (formato: YYYY-MM-DD_HH-MM-SS)
+String getTimestampedFilename(const char* prefix, const char* ext) {
+    String ts = get_current_time();
+    return String("/coleta/") + prefix + "_" + ts + ext;
+
+}
+
+// ===========================================================================
+// Setup
+// ===========================================================================
+
 void setup() {
     auto cfg = M5.config();
     M5.begin(cfg);
     Serial.begin(921600);
+
+    // --- INICIALIZAÇÃO DO RTC ---
+    Serial.println(">>> Iniciando RTC...");
+    rtc_ready = M5.Rtc.isEnabled();
+
+    if (!rtc_ready) {
+        Serial.println("RTC not found. Seguindo sem RTC.");
+    } else {
+        Serial.println("RTC found.");
+    }
 
     // --- INICIALIZAÇÃO DO MICROSD ---
     Serial.println(">>> Iniciando SD Card com pinos customizados...");
@@ -72,15 +123,19 @@ void setup() {
 
         if (!SD.exists("/coleta")) SD.mkdir("/coleta");
 
-        imuFile = SD.open("/coleta/imu.csv", FILE_WRITE);
-        audioFile = SD.open("/coleta/audio.wav", FILE_WRITE);
+        // Gerar nomes com timestamp para não sobrescrever dados
+        String imuFilename = getTimestampedFilename("imu", ".csv");
+        audioFilename = getTimestampedFilename("audio", ".wav");
+
+        imuFile = SD.open(imuFilename, FILE_APPEND);
+        audioFile = SD.open(audioFilename, FILE_APPEND);
 
         if (!imuFile || !audioFile) {
             Serial.println("Erro ao criar arquivos.");
             sd_ready = false;
         } else {
             // Escreve cabeçalho CSV
-            imuFile.println("frame,ax,ay,az,gx,gy,gz,ax1,ay1,az1,gx1,gy1,gz1,ax2,ay2,az2,gx2,gy2,gz2");
+            imuFile.println("frame,time_ms,timestamp,ax,ay,az,gx,gy,gz,ax1,ay1,az1,gx1,gy1,gz1,ax2,ay2,az2,gx2,gy2,gz2");
             
             // Reserva espaço para o cabeçalho WAV
             wav_header_t header;
@@ -101,6 +156,10 @@ void setup() {
     Serial.println(">>> Gravando... Pressione Botao A para parar.");
 }
 
+// ===========================================================================
+// Loop
+// ===========================================================================
+
 void loop() {
     M5.update();
     
@@ -116,6 +175,17 @@ void loop() {
     }
 
     if (!recording) return;
+
+    //Caso recording = true
+    unsigned long time_ms = millis();
+    String current_time;
+
+    if (!rtc_ready) {
+        current_time = String("NO_RTC_") + String(time_ms);
+    }
+    else{
+        current_time = get_current_time();
+    }
 
     // 1. CAPTURA DE ÁUDIO
     bool mic_ok = M5.Mic.record(mic_buffer, BUFFER_SIZE, SAMPLE_RATE);
@@ -138,9 +208,9 @@ void loop() {
 
     // 3. ESCRITA NO SD
     if (sd_ready) {
-        // IMU CSV
-        imuFile.printf("%lu,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f\n",
-                       frame_count, data.accel.x, data.accel.y, data.accel.z,
+        // IMU CSV com millis e RTC atualizado a cada minuto
+        imuFile.printf("%lu,%lu,%s,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f\n",
+                       frame_count, time_ms, current_time.c_str(), data.accel.x, data.accel.y, data.accel.z,
                        data.gyro.x, data.gyro.y, data.gyro.z,
                        ax1, ay1, az1, gx1, gy1, gz1,
                        ax2, ay2, az2, gx2, gy2, gz2);
